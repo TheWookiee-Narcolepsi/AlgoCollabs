@@ -1,11 +1,11 @@
 //@version=6
-strategy("T3 WAE Trendilio Strategy", overlay=true, calc_on_every_tick=false, calc_on_order_fills=false, initial_capital= 1000000, slippage= 13, process_orders_on_close= false, use_bar_magnifier= true, default_qty_type=strategy.percent_of_equity, default_qty_value= 100, commission_value=0.05, pyramiding=1, margin_long= 0, margin_short= 0)
+strategy("T3 WAE Trendilio Strategy", overlay=true, calc_on_every_tick=true, calc_on_order_fills=false, initial_capital= 1000000, slippage= 13, process_orders_on_close= false, use_bar_magnifier= true, default_qty_type=strategy.percent_of_equity, default_qty_value= 100, commission_value=0.05, pyramiding=1, margin_long= 0, margin_short= 0)
 
 // ------------------------------------------------
 // Version Settings
 // ------------------------------------------------
 var g_version = "🔖Version Info🔖"
-version = input.string("1.1.1", "Version", options=["1.1.1"], group=g_version, tooltip="Version of plate")
+version = input.string("1.1.4", "Version", options=["1.1.4"], group=g_version, tooltip="Version of plate")
 optimizingTime = input.bool(true,"Optimizing Time",group=g_version, tooltip="When enabled, the script will skip non-essential visuals (dashboard, labels, etc.) for faster loading.")
 
 // ------------------------------------------------
@@ -3024,116 +3024,110 @@ showTable            = input.bool(true, "Display Monthly Returns Table?", group=
 prec                 = input.int(2, "Table Precision", group=profit_loss_table, tooltip="Set the decimal precision for the monthly returns table.")
 
 // MONTHLY PNL LOGIC ONLY EXECUTES IF optimizingTime IS FALSE
-if not optimizingTime
-    ///////////////////////////////////////////////////////////////////////
-    // Put all your monthly P&L logic inside this if-condition:
-    ///////////////////////////////////////////////////////////////////////
 
-    // Month names array
-    var month_names = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+//------------------------------------
+// MONTHLY P&L TABLE //
+//------------------------------------
 
-    // Color options
-    loss_colour = color.red
-    win_colour = color.green
-    cell_text_colour = color.white
+// Inputs 
+showAlgoCollabs = input.bool(true, title="Show AlgoCollabs Header", group = profit_loss_table)
 
-    // Is new month?
-    new_month = ta.change(month(time)) != 0
-    new_year  = ta.change(year(time)) != 0
+//Set colour options
+row_column_header_colour = #cccccc
+row_column_text_colour = color.black
+year_total_header_colour = color.rgb(175, 175, 175)
+loss_colour = color.red
+win_colour = color.green
+cell_text_colour = color.white
 
-    // Get strategy equity and compare to previous bar
-    eq       = strategy.equity
-    bar_pnl  = eq / eq[1] - 1
+//Is new month?
+new_month = ta.change(month(time)) != 0
+new_year  = ta.change(year(time)) != 0
 
-    var float cur_month_pnl = 0.0
-    var float cur_year_pnl  = 0.0
+//Get strategy equity and compare to previous bar
+eq = strategy.equity
+bar_pnl = eq / eq[1] - 1
 
-    // Current Monthly P&L
-    cur_month_pnl := new_month ? 0.0 : (1 + cur_month_pnl[1]) * (1 + bar_pnl) - 1 
+var float cur_month_pnl = 0.0
+var float cur_year_pnl  = 0.0
 
-    // Current Yearly P&L
-    cur_year_pnl := new_year ? 0.0 : (1 + cur_year_pnl[1]) * (1 + bar_pnl) - 1  
+// Current Monthly P&L
+cur_month_pnl := new_month ? 0.0 : (1 + cur_month_pnl[1]) * (1 + bar_pnl) - 1 
 
-    // Arrays to store Yearly and Monthly P&Ls
-    var month_pnl  = array.new_float(0)
-    var month_time = array.new_int(0)
+// Current Yearly P&L
+cur_year_pnl := new_year ? 0.0 : (1 + cur_year_pnl[1]) * (1 + bar_pnl) - 1  
 
-    // Initialize arrays with at least one value to prevent empty array errors
-    var int bar_count = 0
-    bar_count := bar_count[1] + 1
-    if bar_count == 1
-        array.push(month_pnl, 0.0)
-        array.push(month_time, time)
+// Arrays to store Yearly and Monthly P&Ls
+var month_pnl  = array.new<float>()
+var month_time = array.new<int>()
 
-    if (new_month)
-        array.push(month_pnl, nz(cur_month_pnl[1], 0.0))  // Force NaN to 0.0
-        array.push(month_time, time[1])
+var year_pnl  = array.new<float>()
+var year_time = array.new<int>()
 
-    ///////////////////////////////////////////////////////////////////////
-    // CREATE AND RENDER THE TABLE IF showTable == true
-    ///////////////////////////////////////////////////////////////////////
-    if showTable
-        current_year  = year(time)
-        current_month = month(time)
+var bool last_computed = false
+
+if (new_month or barstate.islast)
+    if (last_computed[1])
+        array.pop(month_pnl)
+        array.pop(month_time)
+    
+    array.push(month_pnl, nz(cur_month_pnl[1], 0.0))  // Force NaN to 0.0
+    array.push(month_time, time[1])
+
+if (new_year or barstate.islast)
+    if (last_computed[1])
+        array.pop(year_pnl)
+        array.pop(year_time)
+    
+    array.push(year_pnl, nz(cur_year_pnl[1], 0.0))  // Force NaN to 0.0
+    array.push(year_time, time[1])
+
+last_computed := barstate.islast ? true : (last_computed[1] ? last_computed[1] : false)
+
+// Monthly P&L Table    
+var table monthly_table = table.new(position.bottom_right, columns=14, rows=1, border_width=1)
+var month_names = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+if (barstate.islast and showTable and not optimizingTime)
+    current_year = year(time)
+    start_year = year(array.get(year_time, 0))
+    num_years = current_year - start_year + 1
+    
+    monthly_table.clear(start_column=0, start_row=0)
+    monthly_table := table.new(position.bottom_right, columns=14, rows=num_years + (showAlgoCollabs ? 2 : 1), border_width=1)
+
+    row_offset = 0
+
+    // Add title row if showAlgoCollabs is true
+    if showAlgoCollabs
+        monthly_table.cell(0, 0, "@AlgoCollabs", bgcolor = color.white, text_color = color.black, text_size = size.normal)
+        monthly_table.merge_cells(start_column = 0, start_row = 0, end_column = 13, end_row = 0)
+        row_offset := 1
+
+    // Set up headers
+    monthly_table.cell(0, row_offset, "Year", bgcolor = color.new(row_column_header_colour, 0)) //column 1 header
+    for i = 1 to 12
+        monthly_table.cell(i, row_offset, array.get(month_names, i-1), bgcolor = color.new(row_column_header_colour, 0))
+    monthly_table.cell(13, row_offset, "Year", bgcolor = color.new(year_total_header_colour, 0)) //Total column header
+
+    // Populate table
+    for yi = 0 to num_years - 1
+        y_year = start_year + yi
+        monthly_table.cell(0, yi + row_offset + 1, str.tostring(y_year), bgcolor = color.new(row_column_header_colour, 0))
         
-        // Create table with fixed size to avoid bounds issues
-        var pnl_table = table.new(position.bottom_right, columns=13, rows=6, border_width=1, bgcolor=color.new(color.black, 10))
+        yearly_total = 0.0
+        for mi = 1 to 12
+            array_index = (yi * 12) + mi - 1
+            if array_index < array.size(month_pnl)
+                m_pnl = array.get(month_pnl, array_index)
+                yearly_total += m_pnl
+                if m_pnl != 0.0
+                    m_color = m_pnl > 0 ? color.new(win_colour, 25) : color.new(loss_colour, 25)
+                    monthly_table.cell(mi, yi + row_offset + 1, str.tostring(math.round(m_pnl * 100, prec)), bgcolor = m_color, text_color = cell_text_colour)
+                else
+                    monthly_table.cell(mi, yi + row_offset + 1, "", bgcolor = color.new(color.white, 100))
+            else
+                monthly_table.cell(mi, yi + row_offset + 1, "", bgcolor = color.new(color.white, 100))
         
-        // Headers
-        table.cell(pnl_table, 0, 0, "Year", bgcolor=color.new(color.navy, 10), text_color=color.white, text_size=size.small)
-        for i = 0 to 11
-            table.cell(pnl_table, i + 1, 0, array.get(month_names, i), bgcolor=color.new(color.navy, 10), text_color=color.white, text_size=size.small)
-        
-        // Create an array to track unique years
-        var years = array.new_int(0)
-        array.clear(years)
-        
-        // Collect unique years
-        if array.size(month_time) > 0
-            for i = 0 to array.size(month_time) - 1
-                y = year(array.get(month_time, i))
-                if array.indexof(years, y) == -1
-                    array.push(years, y)
-        
-        // Add current year if not already present
-        if array.indexof(years, current_year) == -1
-            array.push(years, current_year)
-        
-        // Sort years in descending order
-        array.sort(years, order.descending)
-        
-        // Populate table for each year
-        for row = 0 to array.size(years) - 1
-            int yr = array.get(years, row)
-            
-            // Populate year cell
-            table.cell(pnl_table, 0, row + 1, str.tostring(yr), bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=size.small)
-            
-            // Fill in monthly data for this year
-            for month_idx = 1 to 12
-                // Skip future months in current year
-                if yr == current_year and month_idx > current_month
-                    table.cell(pnl_table, month_idx, row + 1, "", bgcolor=color.new(color.gray, 70), text_size=size.small)
-                    continue
-                
-                // Find matching month in stored data
-                float m_pnl = 0.0
-                bool found_month = false
-                if array.size(month_pnl) > 0
-                    for i = 0 to array.size(month_pnl) - 1
-                        int data_year  = year(array.get(month_time, i))
-                        int data_month = month(array.get(month_time, i))
-                        
-                        if data_year == yr and data_month == month_idx
-                            m_pnl       := array.get(month_pnl, i)
-                            found_month := true
-                            break
-                
-                // Render month cell
-                if found_month and m_pnl != 0
-                    color cell_bg = m_pnl > 0 ? color.new(color.green, 20) : color.new(color.red, 20)
-                    table.cell(pnl_table, month_idx, row + 1,
-                               str.tostring(math.round(m_pnl * 100, prec)),
-                               bgcolor=cell_bg, text_color=color.white, text_size=size.small)
-                else if yr != current_year
-                    table.cell(pnl_table, month_idx, row + 1, "", bgcolor=color.new(color.white, 100), text_size=size.small)
+        y_color = yearly_total > 0 ? color.new(win_colour, 0) : color.new(loss_colour, 0 )
+        monthly_table.cell(13, yi + row_offset + 1, str.tostring(math.round(yearly_total * 100, prec)), bgcolor = y_color, text_color = cell_text_colour)
