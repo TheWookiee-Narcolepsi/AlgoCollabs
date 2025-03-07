@@ -1,0 +1,3139 @@
+//@version=6
+strategy("T3 WAE Trendilio Strategy", overlay=true, calc_on_every_tick=false, calc_on_order_fills=false, initial_capital= 1000000, slippage= 13, process_orders_on_close= false, use_bar_magnifier= true, default_qty_type=strategy.percent_of_equity, default_qty_value= 100, commission_value=0.05, pyramiding=1, margin_long= 0, margin_short= 0)
+
+// ------------------------------------------------
+// Version Settings
+// ------------------------------------------------
+var g_version = "🔖Version Info🔖"
+version = input.string("1.1.1", "Version", options=["1.1.1"], group=g_version, tooltip="Version of plate")
+optimizingTime = input.bool(true,"Optimizing Time",group=g_version, tooltip="When enabled, the script will skip non-essential visuals (dashboard, labels, etc.) for faster loading.")
+
+// ------------------------------------------------
+// 1) Main Strategy Settings
+// ------------------------------------------------
+var g_main_strategy = "🌟Master Strategy Setup🌟"
+useT3 = input.bool(true, "#1 T3 MA?", group=g_main_strategy, tooltip="Enable/disable the T3 indicator for strategy signals.")
+t3Length = input.int(50, "T3 Length", minval=1, group=g_main_strategy, tooltip="Set the period length for the T3 indicator.")
+t3Factor = input.float(0.7, "T3 Smoothing Factor", minval=0.01, group=g_main_strategy, tooltip="Set the smoothing factor for the T3 indicator, affecting its sensitivity.")
+highlightT3 = input.bool(true, "Visualize T3 Shifts?", group=g_main_strategy, tooltip="Enable visual highlights for T3 movements on the chart.")
+t3Source = input.string("close", "T3 Source", options=["open","high","low","close","hl2","hlc3","ohlc4","hlcc4"], group=g_main_strategy, tooltip="Select the price source for the T3 indicator.")
+useTrendilio = input.bool(true, "#2 Integrate Trendilio?", group=g_main_strategy, tooltip="Enable/disable the Trendilio indicator for strategy signals.")
+TrendilioSource = input.string("close", "Trendilio Source", options=["open","high","low","close","hl2","hlc3","ohlc4","hlcc4"], group=g_main_strategy, tooltip="Select the price source for the Trendilio indicator.")
+smoothTrending = input.int(1, "Trendilio Smoothing", minval=1, step=1, group=g_main_strategy, tooltip="Set the smoothing period for Trendilio trending calculations.")
+lookbackTrendilio = input.int(20, "Trendilio Lookback", minval=1, group=g_main_strategy, tooltip="Set the lookback period for Trendilio calculations.")
+almaOffsetTrend = input.float(0.85, "ALMA Offset - Trendilio", minval=0.01, step=0.01, maxval=10, group=g_main_strategy, tooltip="Set the offset for the Arnaud Legoux Moving Average (ALMA) in Trendilio.")
+almaSigma = input.int(6, "ALMA Sigma - Trendilio", minval=1, group=g_main_strategy, tooltip="Set the sigma value for the ALMA in Trendilio, controlling its smoothing.")
+bandMultiplier = input.float(1, "Trendilio Band Multiplier", minval=0.1, step=0.1, group=g_main_strategy, tooltip="Set the multiplier for Trendilio's band width, affecting overbought/oversold zones.")
+customBandLengthTrendilio = input.bool(false, "Use Custom Band Length?", group=g_main_strategy, tooltip="Enable a custom band length for Trendilio, otherwise use the lookback period.")
+customBandLengthTrendilioValue = input.int(20, "Custom Band Length Value", minval=1, group=g_main_strategy, tooltip="Set the custom band length for Trendilio if custom length is enabled.")
+trendilioTradeType = input.string("OS/OB", "Trendilio Behavior", options=["OS/OB","OS/OB enter","OS/OB exit","OS/OB reverse","OS/OB enter reverse","OS/OB reverse exit"], group=g_main_strategy, tooltip="Select the Trendilio trade type: overbought/oversold zones or various entry/exit/reverse strategies.")
+useWAE = input.bool(true, "#3 Engage Weighted Alpha Envelope?", group=g_main_strategy, tooltip="Enable/disable the Weighted Alpha Envelope (WAE) indicator for strategy signals.")
+useExplosionLine = input.bool(true, "Alternate WAE Explosion Line?", group=g_main_strategy, tooltip="Enable the explosion line instead of the standard WAE threshold for signals.")
+waeSensitivity = input.int(150, "WAE Sensitivity", minval=1, group=g_main_strategy, tooltip="Set the sensitivity factor for the WAE indicator, impacting signal strength.")
+fastEMALength = input.int(20, "WAE Fast EMA Length", minval=1, group=g_main_strategy, tooltip="Set the period length for the fast EMA in WAE calculations.")
+slowEMALength = input.int(40, "WAE Slow EMA Length", minval=1, group=g_main_strategy, tooltip="Set the period length for the slow EMA in WAE calculations.")
+bbChannelLength = input.int(20, "WAE Bollinger Channel Length", minval=1, group=g_main_strategy, tooltip="Set the period length for the Bollinger Bands channel in WAE.")
+bbStdevMultiplier = input.float(2, "WAE Bollinger StDev", minval=0.1, step=0.1, group=g_main_strategy, tooltip="Set the standard deviation multiplier for Bollinger Bands in WAE, controlling channel width.")
+noTradeZoneThreshold = input.int(20, "WAE No-Trade Threshold", minval=1, group=g_main_strategy, tooltip="Set the threshold for the no-trade zone in WAE, filtering out low-confidence signals.")
+force_exit = input.bool(false, "Forceful Exit on Signal?", group=g_main_strategy, tooltip="Enable to force exit positions when an exit signal is generated, regardless of profit or loss.")
+
+// ------------------------------------------------
+// 2) General Settings
+// ------------------------------------------------
+var g_general = "🔱Universal Parameters🔱"
+bool waitForBarConfirmation = input.bool(false, "Confirmation on Bar", group=g_general, tooltip="When enabled, signals will only trigger after the current bar is fully formed")
+bool reversalMode = input.bool(false, "Invert Trend?", group=g_general, tooltip="When enabled, strategy will look for trend reversals instead of trend continuations")
+
+// ------------------------------------------------
+// 3) Trade Type
+// ------------------------------------------------
+var group_trade_type = "❤️Direction Configuration❤️"
+longTrades  = input.bool(true,  "Allow Long Positions", group=group_trade_type, inline="trade_type", tooltip="Enable/disable long trades. Useful if you're bearish and want to exclude long trades for this asset.")
+shortTrades = input.bool(true,  "Allow Short Positions", group=group_trade_type, inline="trade_type", tooltip="Enable/disable short trades. Useful if you're bullish and want to exclude short trades for this asset.")
+
+// ------------------------------------------------
+// 4) Margin & Position Size
+// ------------------------------------------------
+var g_posSizing = "💪Margin & Positioning💪"
+useRawQty = input.bool(false, "Fixed Raw Contracts Position?", group=g_posSizing, tooltip="Enable to use a fixed raw quantity for position sizing, bypassing dynamic calculations.")
+rawPositionQty = input.float(1.0, "Raw Contracts Qty", minval=0.0001, step=0.0001, group=g_posSizing, tooltip="Set the fixed raw contracts quantity for position sizing when using fixed amounts.")
+risk = input.float(10, "Risk Allocation (%)", minval=0.1, group=g_posSizing, tooltip="Set the percentage of your portfolio to risk per trade, determining position size.")
+userLeverage = input.float(1, "Leverage Factor", minval=1, group=g_posSizing, tooltip="Set the leverage ratio to amplify position size, increasing both potential returns and risks.")
+
+// ------------------------------------------------
+// 5) Adaptive Volatility Sizing
+// ------------------------------------------------
+var g_position_risk = "🌋Adaptive Volatility Sizing🌋"
+positionSizeType = input.string("Manual", "Position Sizing Style", options=["Manual","Dynamic Algo","Dynamic Algo 2","Dynamic Algo 3","Dynamic Algo 4","Dynamic Algo 5","Risk Based"], group=g_position_risk, inline="psize", tooltip="Select position sizing method: Manual (fixed sizing), Dynamic Algo (standard threshold-based on historical ranges), Dynamic Algo 2 (adaptive weighted scaling with momentum), Dynamic Algo 3 (enhanced range analysis with four zones), Dynamic Algo 4 (biased thresholds adapting to market trend), Dynamic Algo 5 (smoothed thresholds with dampening for stability), Risk Based (fixed percentage risk sizing).")
+daSource = input.string("ATR", "Volatility Source", options=["close","volume","MA5","MA25","MACD","ATR","ADX"], group=g_position_risk, inline="psizee", tooltip="Choose the data source for the dynamic position sizing algorithm: closing price, volume, moving averages, MACD, ATR, or ADX.")
+da1 = input.float(0.5, "VFac#1", minval=0, step=0.1, group=g_position_risk, inline="da", tooltip="Set the position size multiplier for low volatility in the dynamic algo.")
+da2 = input.float(1,   "VFac#2", minval=0, step=0.1, group=g_position_risk, inline="da", tooltip="Set the position size multiplier for moderate volatility in the dynamic algo.")
+da3 = input.float(1.5, "VFac#3", minval=0, step=0.1, group=g_position_risk, inline="da", tooltip="Set the position size multiplier for high volatility in the dynamic algo.")
+
+// ------------------------------------------------
+// 6) Exit Protocols
+// ------------------------------------------------
+var g_exit = "🔥Exit Protocols🔥"
+takeProfitType = input.string("R:R", "Take Profit Variation", options=["ATR","Fixed Percentage","R:R","Structure HH/LL","Structure High/Low"], group=g_exit, tooltip="Choose the take profit method: ATR for dynamic range-based TP, Fixed Percentage for a set TP percentage, R:R for risk-reward ratio, or Structure HH/LL/High/Low for price structure-based TP.")
+stopLossType   = input.string("ATR", "Stop Loss Variation",  options=["None","Fixed Percent","ATR","HH/LL","Keltner","Bollinger Bands","Donchian Channel","MA #1","MA #5"], group=g_exit, tooltip="Select the stop loss method: None for no SL, Fixed Percent for a set percentage, ATR for dynamic range-based SL, or indicator-based options like HH/LL, Keltner, etc.")
+
+// ------------------------------------------------
+// 7) Layered Profit-Targets
+// ------------------------------------------------
+var g_multi_tp = "💰Layered Profit-Targets💰"
+useMultiTP = input.bool(false, "Multiple TPs (X3)", group=g_multi_tp, tooltip="Enable multiple take-profit levels (TP1, TP2, TP3). Note: This works on percentages and may depend on your API connector. Be cautious, as it can skew backtesting results in TradingView.")
+tp1Enabled = input.bool(false, "TP1 Active?", group=g_multi_tp, inline="tp1", tooltip="Enable/disable the first take-profit level.")
+tp1Percent = input.float(33.0, "% for TP1", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp1", tooltip="Set the percentage of the position to close at the first take-profit level.")
+tp1Level = input.float(33.0, "Threshold TP1", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp1", tooltip="Set the profit percentage threshold to trigger the first take-profit.")
+tp2Enabled = input.bool(false, "TP2 Active?", group=g_multi_tp, inline="tp2", tooltip="Enable/disable the second take-profit level.")
+tp2Percent = input.float(33.0, "% for TP2", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp2", tooltip="Set the percentage of the position to close at the second take-profit level.")
+tp2Level = input.float(66.0, "Threshold TP2", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp2", tooltip="Set the profit percentage threshold to trigger the second take-profit.")
+tp3Percent = input.float(100.0, "% for TP3", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp3", tooltip="Set the percentage of the position to close at the third take-profit level (closes remaining position).")
+tp3Level = input.float(100.0, "Threshold TP3", minval=0.1, maxval=100, step=0.1, group=g_multi_tp, inline="tp3", tooltip="Set the profit percentage threshold to trigger the third take-profit.")
+
+// ------------------------------------------------
+// 8) Fixed Ratio Targets
+// ------------------------------------------------
+var g_fixed_percent = "😂Fixed Ratio Targets😂"
+stopLossLongPercent   = input.float(1.0, "Stop Loss Long (%)",    minval=0.1, step=0.1, group=g_fixed_percent, tooltip="Set the fixed percentage for stop loss on long trades.")
+takeProfitLongPercent = input.float(2.0, "Take Profit Long (%)",  minval=0.1, step=0.1, group=g_fixed_percent, tooltip="Set the fixed percentage for take profit on long trades.")
+stopLossShortPercent  = input.float(1.0, "Stop Loss Short (%)",   minval=0.1, step=0.1, group=g_fixed_percent, tooltip="Set the fixed percentage for stop loss on short trades.")
+takeProfitShortPercent= input.float(2.0, "Take Profit Short (%)", minval=0.1, step=0.1, group=g_fixed_percent, tooltip="Set the fixed percentage for take profit on short trades.")
+
+// ------------------------------------------------
+// 9) Swing High/Low Logic
+// ------------------------------------------------
+var g_hh_ll = "🪀Swing High/Low Logic🪀"
+hhllLookback = input.int(20, "HH/LL Lookback", minval=1, group=g_hh_ll, tooltip="Set the lookback period in bars to calculate the highest high and lowest low for HH/LL exits.")
+
+// ------------------------------------------------
+// 10) Enhanced R:R Logic
+// ------------------------------------------------
+var g_r_r = "🙏Enhanced R:R Logic🙏"
+rrRatioLong  = input.float(1.3, "Long R:R Ratio",  minval=0.1, step=0.1, group=g_r_r, tooltip="Set the risk-to-reward ratio for long trades, used with ATR and HH/LL for take profits.")
+rrRatioShort = input.float(1.3, "Short R:R Ratio", minval=0.1, step=0.1, group=g_r_r, tooltip="Set the risk-to-reward ratio for short trades, used with ATR and HH/LL for take profits.")
+
+// ------------------------------------------------
+// 11) Structure-Based TP
+// ------------------------------------------------
+var g_structure = "🗿Structure-Based TP🗿"
+leftBars  = input.int(9, "Left Bars to Check", minval=1, group=g_structure, tooltip="Set the number of bars to look left on the chart for calculating Structure HH/LL and High/Low take profits.")
+rightBars = input.int(1, "Right Bars to Check", minval=1, group=g_structure, tooltip="Set the number of bars to look right on the chart for calculating Structure HH/LL and High/Low take profits.")
+
+// ------------------------------------------------
+// 12) ATR Protections
+// ------------------------------------------------
+var g_atr_stoploss = "🔮ATR Protections🔮"
+atrLength = input.int(14, "Global ATR Length", minval=1, group=g_atr_stoploss, tooltip="Set the period length for calculating the Average True Range (ATR) used in stop-loss and take-profit calculations.")
+globalAtrMultiplier = input.float(2.5, "Global ATR Multiplier", minval=0.1, step=0.1, group=g_atr_stoploss, tooltip="Set the multiplier to scale the ATR for both stop-loss and take-profit when custom settings are not used.")
+atrSource = input.string("Source", "ATR Source", options=["Source","Swing High/Low"], group=g_atr_stoploss, tooltip="Choose the source for ATR calculation: 'Source' for standard ATR, or 'Swing High/Low' for swing-based ATR.")
+atrSwingLookback = input.int(14, "ATR Swing Lookback", minval=1, group=g_atr_stoploss, tooltip="Set the lookback period for swing highs and lows when using 'Swing High/Low' as the ATR source.")
+
+// Separate ATR settings for Stop Loss
+useCustomAtrSL = input.bool(false, "Custom ATR for Stop Loss?", group=g_atr_stoploss, tooltip="Enable to use separate ATR length and multiplier for Stop Loss calculations.")
+atrLengthSL = input.int(14, "ATR Length (SL)", minval=1, group=g_atr_stoploss, tooltip="Set the period length for ATR used in stop-loss calculations. Only used if Custom ATR for SL is enabled.")
+atrMultiplierForStoploss = input.float(2.5, "ATR Multiplier (SL)", minval=0.1, step=0.1, group=g_atr_stoploss, tooltip="Set the multiplier to scale the ATR for determining the stop-loss level. Only used if Custom ATR for SL is enabled.")
+
+// Separate ATR settings for Take Profit
+useCustomAtrTP = input.bool(false, "Custom ATR for Take Profit?", group=g_atr_stoploss, tooltip="Enable to use separate ATR length and multiplier for Take Profit calculations.")
+atrLengthTP = input.int(14, "ATR Length (TP)", minval=1, group=g_atr_stoploss, tooltip="Set the period length for ATR used in take-profit calculations. Only used if Custom ATR for TP is enabled.")
+atrMultiplierForTakeProfit = input.float(3.0, "ATR Multiplier (TP)", minval=0.1, step=0.1, group=g_atr_stoploss, tooltip="Set the multiplier to scale the ATR for determining the take-profit level. Only used if Custom ATR for TP is enabled.")
+
+// ------------------------------------------------
+// 13) Supplementary Exit Indicators
+// ------------------------------------------------
+var g_iexit = "🥰Supplementary Exit Indicators🥰"
+keltnerLength = input.int(20, "Keltner Length", minval=1, group=g_iexit, tooltip="Set the period length for the Keltner Channel used in stop-loss calculations.")
+keltnerMultiplier = input.float(2.0, "Keltner Multiplier", minval=0.1, step=0.1, group=g_iexit, tooltip="Set the multiplier for the Keltner Channel to determine stop-loss levels.")
+bollingerLength = input.int(20, "Bollinger Length", minval=1, group=g_iexit, tooltip="Set the period length for Bollinger Bands used in stop-loss calculations.")
+bollingerStDev = input.float(2.0, "Bollinger StDev", minval=0.1, step=0.1, group=g_iexit, tooltip="Set the standard deviation multiplier for Bollinger Bands to determine stop-loss levels.")
+donchianLength = input.int(20, "Donchian Channel Length", minval=1, group=g_iexit, tooltip="Set the period length for the Donchian Channel used in stop-loss calculations.")
+ma1Period = input.int(10, "MA #1 Period", minval=1, group=g_iexit, tooltip="Set the period length for Moving Average #1 used in stop-loss calculations.")
+ma5Period = input.int(50, "MA #5 Period", minval=1, group=g_iexit, tooltip="Set the period length for Moving Average #5 used in stop-loss calculations.")
+
+// ------------------------------------------------
+// 14) Precision Adjustments
+// ------------------------------------------------
+var g_accuracy = "⚡Precision Adjustments⚡"
+roundToDecimal = input.bool(true, "Round to Symbol Decimals?", group=g_accuracy, tooltip="Enable rounding to the symbol's decimal points for improved accuracy with your exchange.")
+manualDecimalPoints = input.int(1, "Manual Decimal Points", minval=1, group=g_accuracy, tooltip="Set the maximum number of decimal points for manual rounding, enhancing precision across exchanges.")
+roundingMethod = input.string("Round", "Rounding Method", options=["Round","Ceil"], group=g_accuracy, tooltip="Choose the rounding method: 'Round' for standard rounding, or 'Ceil' for ceiling rounding.")
+
+// ------------------------------------------------
+// 15) Leverage Safeguards
+// ------------------------------------------------
+var g_leverage_risk = "🌋Leverage Safeguards🌋"
+i_leverageBlock = input.bool(true, "Safety Against Liquidation", group=g_leverage_risk, tooltip="Prevent trades where the liquidation level is riskier than the stop loss, based on an estimate before trade execution.")
+i_Maintenance = input.float(0.5, "Maintenance Margin Rate", minval=0.1, step=0.1, group=g_leverage_risk, tooltip="Set the maintenance margin rate for leverage calculations. Research your exchange's rate before using leverage algorithms.")
+
+// ------------------------------------------------
+// 16) Risk-Reward Filters
+// ------------------------------------------------
+var g_risk_management = "🛡️Risk-Reward Filters🛡️"
+waitCandlesBetweenEntries = input.int(1, "Pause X Bars Between Entries", minval=0, group=g_risk_management, tooltip="Set the number of candles to wait between trades. Use 0 or below to disable.")
+activateMinTP = input.bool(false, "Activate Minimum TP?", group=g_risk_management, tooltip="Enable a minimum take-profit percentage to filter out unprofitable trades, especially with techniques like Fibonacci levels.")
+minTPAction = input.string("Do not enter", "If TP Too Small", options=["Do not enter","Use Percentage Instead"], group=g_risk_management, tooltip="Decide what happens if the take profit is below the minimum: prevent entry or replace with the minimum percentage.")
+minTPThreshold = input.float(1.0, "Minimal Acceptable TP %", minval=0.1, step=0.1, group=g_risk_management, tooltip="Set the minimum take-profit percentage threshold for trades.")
+activateMaxSL = input.bool(false, "Activate Max SL?", group=g_risk_management, tooltip="Enable a maximum stop-loss percentage to limit trade risk.")
+maxSLAction = input.string("Do not enter", "If SL Threshold Breaks", options=["Do not enter","Use Percentage Instead"], group=g_risk_management, tooltip="Decide what happens if the stop loss exceeds the maximum: prevent entry or replace with the maximum percentage.")
+maxSLThreshold = input.float(2.5, "Max Acceptable SL %", minval=0.1, step=0.1, group=g_risk_management, tooltip="Set the maximum stop-loss percentage threshold to control trade risk.")
+
+// ------------------------------------------------
+// 17) Early Termination
+// ------------------------------------------------
+var g_early_exit = "⛵Early Termination⛵"
+earlyExitProtection = input.bool(false, "Premature MA-Based Exit?", group=g_early_exit, tooltip="Enable closing a position early if the price crosses a moving average, reducing potential losses or locking in profits.")
+maProtectionType = input.string("EMA", "MA Protection Type", options=["EMA","HEMA","SMA","HMA","WMA","DEMA","VWMA","VWAP","T3"], group=g_early_exit, tooltip="Select the type of moving average for early exit protection.")
+maProtectionLength = input.int(50, "Protection MA Length", minval=1, group=g_early_exit, tooltip="Set the period length for the moving average used in early exit protection.")
+indicatorSourceProtection = input.string("close", "Protection MA Source", options=["open","high","low","close","hl2","hlc3","ohlc3","hlcc4"], group=g_early_exit, tooltip="Choose the price source for the early exit protection moving average.")
+
+// ------------------------------------------------
+// 18) Moving Average Configuration
+// ------------------------------------------------
+var g_ma_strategy = "⚓Moving Average Configuration⚓"
+useMA = input.string("Off", "Use MA Strategy?", options=["Off","Close over/under MA5","Strict Close over/under MA5","5 MA (Ordered)","3 MA (Ordered)","3 MA (Strict)","3 MA (Cross)"], group=g_ma_strategy, tooltip="Select the moving average strategy for trade confluence or filtering.")
+inverseMA = input.bool(false, "Invert MA Logic?", group=g_ma_strategy, tooltip="Enable to invert the moving average conditions, potentially reversing trade signals.")
+boolmaLength1 = input.bool(true, "MA #1 Enabled?", group=g_ma_strategy, inline="ma1", tooltip="Enable/disable the first moving average for confluence.")
+maType1 = input.string("EMA", "MA #1 Type", options=["EMA","SMA","HMA","WMA","DEMA","T3"], group=g_ma_strategy, inline="ma1", tooltip="Choose the type of moving average for MA #1.")
+maLength1 = input.int(9, "MA #1 Period", minval=1, group=g_ma_strategy, inline="ma1", tooltip="Set the period length for MA #1, ideally shorter than MA #2 to avoid conflicting signals.")
+boolmaLength2 = input.bool(true, "MA #2 Enabled?", group=g_ma_strategy, inline="ma2", tooltip="Enable/disable the second moving average for confluence.")
+maType2 = input.string("EMA", "MA #2 Type", options=["EMA","SMA","HMA","WMA","DEMA","T3"], group=g_ma_strategy, inline="ma2", tooltip="Choose the type of moving average for MA #2.")
+maLength2 = input.int(21, "MA #2 Period", minval=1, group=g_ma_strategy, inline="ma2", tooltip="Set the period length for MA #2, ideally longer than MA #1 to avoid conflicting signals.")
+boolmaLength3 = input.bool(false, "MA #3 Enabled?", group=g_ma_strategy, inline="ma3", tooltip="Enable/disable the third moving average for confluence.")
+maType3 = input.string("EMA", "MA #3 Type", options=["EMA","SMA","HMA","WMA","DEMA","T3"], group=g_ma_strategy, inline="ma3", tooltip="Choose the type of moving average for MA #3.")
+maLength3 = input.int(55, "MA #3 Period", minval=1, group=g_ma_strategy, inline="ma3", tooltip="Set the period length for MA #3, typically longer for confluence.")
+boolmaLength4 = input.bool(false, "MA #4 Enabled?", group=g_ma_strategy, inline="ma4", tooltip="Enable/disable the fourth moving average for confluence.")
+maType4 = input.string("EMA", "MA #4 Type", options=["EMA","SMA","HMA","WMA","DEMA","T3"], group=g_ma_strategy, inline="ma4", tooltip="Choose the type of moving average for MA #4.")
+maLength4 = input.int(100, "MA #4 Period", minval=1, group=g_ma_strategy, inline="ma4", tooltip="Set the period length for MA #4, typically longer for confluence.")
+boolmaLength5 = input.bool(false, "MA #5 Enabled?", group=g_ma_strategy, inline="ma5", tooltip="Enable/disable the fifth moving average for confluence.")
+maType5 = input.string("EMA", "MA #5 Type", options=["EMA","SMA","HMA","WMA","DEMA","T3"], group=g_ma_strategy, inline="ma5", tooltip="Choose the type of moving average for MA #5.")
+maLength5 = input.int(200, "MA #5 Period", minval=1, group=g_ma_strategy, inline="ma5", tooltip="Set the period length for MA #5, typically the longest for confluence.")
+boolhmabar = input.bool(false, "Show HMA BAR?", group=g_ma_strategy, inline="hma", tooltip="Enable/disable the Hull Moving Average (HMA) bar for visual confirmation.")
+hmabar = input.int(100, "HMA Bar Length", minval=1, group=g_ma_strategy, inline="hma", tooltip="Set the period length for the Hull Moving Average bar.")
+
+// ------------------------------------------------
+// 19) Directional Trade Limit
+// ------------------------------------------------
+var g_max_trades = "🚫Directional Trade Limit🚫"
+enableMaxTrades = input.bool(false, "Enforce Max Trades?", group=g_max_trades, tooltip="Activate a limit on the maximum number of trades in one direction.")
+maxTradesPerDirection = input.int(5, "Max Trades in One Direction", minval=1, group=g_max_trades, tooltip="Set the maximum number of consecutive trades allowed in one direction before pausing until a trade in the opposite direction occurs.")
+
+// ------------------------------------------------
+// 20) Range-Based Filter
+// ------------------------------------------------
+var g_range_filter = "📏Range-Based Filter📏"
+useRangeFilter = input.bool(false, "Activate Range Filter?", group=g_range_filter, tooltip="Enable the Range Filter to filter trades based on price volatility.")
+rfPeriod = input.int(100, "Range Filter Period", minval=1, group=g_range_filter, tooltip="Set the period length for the Range Filter to assess volatility.")
+rfMulti = input.float(1.2, "Range Filter Multiplier", minval=0.1, step=0.1, group=g_range_filter, tooltip="Set the multiplier for the Range Filter to adjust volatility thresholds.")
+
+// ------------------------------------------------
+// 21) Volume Flow Checker
+// ------------------------------------------------
+var g_volume_flow = "📈Volume Flow Checker📈"
+enableVolumeFlow = input.bool(false, "Incorporate Volume Flow?", group=g_volume_flow, tooltip="Enable the Volume Flow Index (VFI) as a trade filter for volume analysis.")
+vfiLength = input.int(130, "VFI Length", minval=1, group=g_volume_flow, tooltip="Set the period length for the Volume Flow Index calculation.")
+coef = input.float(0.2, "VFI Coefficient", minval=0.1, step=0.1, group=g_volume_flow, tooltip="Set the coefficient for the Volume Flow Index, adjusting sensitivity.")
+maxVolCutoff = input.float(3, "Max Volume Cutoff", minval=0.1, step=0.1, group=g_volume_flow, tooltip="Set the maximum volume cutoff for the Volume Flow Index to filter extreme volumes.")
+
+// ------------------------------------------------
+// 22) ADX Momentum
+// ------------------------------------------------
+var g_adx_settings = "📈ADX Momentum📈"
+enableADX = input.bool(false, "Utilize ADX Momentum?", group=g_adx_settings, tooltip="Enable the Average Directional Index (ADX) as a trade filter for trend strength.")
+adxType = input.string("MasaNakamura", "ADX Calculation", options=["Normal","Stoch","MasaNakamura"], group=g_adx_settings, tooltip="Choose the ADX calculation method: Normal for standard, Stoch for stochastic, or MasaNakamura for a custom approach.")
+adxLineType = input.string("Static", "ADX Line Type", options=["Static","MA","EMA","SMA","HMA","WMA","DEMA","VWMA","T3"], group=g_adx_settings, tooltip="Select the line type for ADX: static value or moving average types.")
+adxSmoothing = input.int(14, "ADX Smoothing", minval=1, group=g_adx_settings, tooltip="Set the smoothing period for the ADX calculation.")
+adxAboveLine = input.int(20, "ADX Threshold", minval=1, maxval=100, group=g_adx_settings, tooltip="Set the ADX threshold above which trades are considered strong.")
+adxMALength = input.int(200, "ADX MA Length", minval=1, group=g_adx_settings, tooltip="Set the period length for the ADX moving average, if applicable.")
+useDI = input.bool(true, "Enable DI for Direction?", group=g_adx_settings, tooltip="Enable Directional Indicators (DI) for trend direction in ADX filtering.")
+diLength = input.int(14, "DI Period", minval=1, group=g_adx_settings, tooltip="Set the period length for Directional Indicators in ADX.")
+minStochLength = input.int(19, "ADX Min Stoch Length", minval=1, group=g_adx_settings, tooltip="Set the minimum stochastic length for ADX stochastic mode.")
+maxStochLength = input.int(100, "ADX Max Stoch Smooth", minval=1, group=g_adx_settings, tooltip="Set the maximum stochastic length for smoothing in ADX stochastic mode.")
+stochSmoothing = input.int(2, "ADX Stoch Smoothing", minval=1, group=g_adx_settings, tooltip="Set the smoothing period for the ADX stochastic calculation.")
+inverseAdaptive = input.bool(false, "Inverse ADX Logic?", group=g_adx_settings, tooltip="Enable to invert the ADX adaptive logic, potentially reversing signals.")
+useRateOfChange = input.bool(false, "Apply Rate of Change?", group=g_adx_settings, tooltip="Enable rate of change calculations for ADX, enhancing trend detection.")
+
+// ------------------------------------------------
+// 23) TDFI Confirmation
+// ------------------------------------------------
+var g_tdfi_settings = "📉TDFI Confirmation📉"
+enableTDFI = input.bool(false, "Volume Confirm? TDFI", group=g_tdfi_settings, tooltip="Enable the Trend Direction Force Index (TDFI) for volume-based trade confirmation.")
+tdfiVersion = input.string("v1", "TDFI Version", options=["v1","v2"], group=g_tdfi_settings, tooltip="Select the TDFI version: v1 for standard, v2 for advanced calculations.")
+tdfiHigh = input.float(0.03, "TDFI Filter High", minval=-100, maxval=100, step=0.01, group=g_tdfi_settings, tooltip="Set the upper threshold for TDFI filtering.")
+tdfiLow = input.float(-0.03, "TDFI Filter Low", minval=-100, maxval=100, step=0.01, group=g_tdfi_settings, tooltip="Set the lower threshold for TDFI filtering.")
+mmaLengthV2 = input.int(13, "MMA Length (v2)", minval=1, group=g_tdfi_settings, tooltip="Set the moving average length for TDFI version 2.")
+mmaModeV2 = input.string("ema", "MMA Mode (v2)", options=["ema","wma","swma","vwma","hull","tema"], group=g_tdfi_settings, tooltip="Select the moving average type for TDFI v2 calculations.")
+smmaModeV2 = input.string("ema", "SMMA Mode (v2)", options=["ema","wma","swma","vwma","hull","tema"], group=g_tdfi_settings, tooltip="Select the smoothing moving average type for TDFI v2 calculations.")
+nLengthV2 = input.int(3, "N-Length (v2)", minval=1, group=g_tdfi_settings, tooltip="Set the N-length for TDFI version 2 calculations.")
+
+// ------------------------------------------------
+// 24) Flat Market Filter
+// ------------------------------------------------
+var g_flat_market = "🛌Flat Market Filter🛌"
+enableFlatMarket = input.bool(false, "Detect Flat Market?", group=g_flat_market, tooltip="Enable the Flat Market filter to identify and avoid low-volatility periods.")
+maTypeFlatMarket = input.string("EMA", "Flat Market MA Type", options=["Static","MA","EMA","SMA","HMA","WMA","DEMA","VWMA","T3"], group=g_flat_market, tooltip="Select the moving average type for Flat Market detection.")
+maLengthFlatMarket = input.int(24, "Flat Market MA Length", minval=1, group=g_flat_market, tooltip="Set the period length for the Flat Market moving average.")
+flatMarketAboveLine = input.int(1, "Flat Market Threshold", minval=1, maxval=100, group=g_flat_market, tooltip="Set the threshold above which the market is considered flat.")
+useRateOfChangeFlat = input.bool(false, "Use Rate of Change for Flat?", group=g_flat_market, tooltip="Enable rate of change calculations for Flat Market, enhancing volatility detection.")
+
+// ------------------------------------------------
+// 25) Hurst Exponent Filter
+// ------------------------------------------------
+var g_hurst_settings = "🌊Hurst Exponent Filter🌊"
+enableHurst = input.bool(false, "Enable Hurst?", group=g_hurst_settings, tooltip="Enable the Hurst Exponent for market trend analysis as a trade filter.")
+hurstExpLength = input.int(64, "Hurst Length", minval=1, group=g_hurst_settings, tooltip="Set the period length for the Hurst Exponent calculation.")
+hurstType = input.string("Trending Market", "Hurst Mode", options=["Trending Market","Consolidation","Random Walk"], group=g_hurst_settings, tooltip="Select the market condition for Hurst analysis: trending, consolidation, or random walk.")
+
+// ------------------------------------------------
+// 26) Bull-Bear Metric
+// ------------------------------------------------
+var g_bull_bear = "🐂Bull-Bear Metric🐻"
+enableBullBear = input.bool(false, "Apply Bull-Bear Gauge?", group=g_bull_bear, tooltip="Enable the Bull Bear Power indicator for trade filtering based on market strength.")
+bbpLength = input.int(13, "Bull-Bear Period", minval=1, group=g_bull_bear, tooltip="Set the period length for the Bull Bear Power calculation.")
+
+// Calculate VWAP values
+calcVWAP(src, length) =>
+    float sumSrcVol = 0.0
+    float sumVol = 0.0
+    
+    for i = 0 to length - 1
+        float vol = volume[i]
+        sumSrcVol := sumSrcVol + src[i] * vol
+        sumVol := sumVol + vol
+    
+    sumVol != 0 ? sumSrcVol / sumVol : na
+
+// Function to calculate SMA
+calcSMA(src, length) =>
+    float sum = 0.0
+    for i = 0 to length - 1
+        sum := sum + src[i]
+    sum / length
+
+// ------------------------------------------------
+// 27) VWAP/EMA Crossover
+// ------------------------------------------------
+var g_vwap_crossover = "📊VWAP/EMA Crossover📊"
+useVWAPEMA = input.bool(false, "Enable VWAP/EMA Filter?", group=g_vwap_crossover, tooltip="Enable the VWAP/EMA crossover as a trade filter.")
+vwapSource = input.string("close", "VWAP Source", options=["open","high","low","close","hl2","hlc3","ohlc3","hlcc4"], group=g_vwap_crossover, tooltip="Select the price source for the VWAP calculation.")
+vwap2Source = input.string("close", "VWAP2/EMA Source", options=["open","high","low","close","hl2","hlc3","ohlc3","hlcc4"], group=g_vwap_crossover, tooltip="Select the price source for the second VWAP or EMA in the crossover.")
+vwapLength = input.int(5, "VWAP Length", minval=1, group=g_vwap_crossover, tooltip="Set the period length for the VWAP calculation.")
+
+// Get source price based on selection
+getSourcePrice(srcString) =>
+    float result = close
+    if srcString == "open"
+        result := open
+    else if srcString == "high"
+        result := high
+    else if srcString == "low"
+        result := low
+    else if srcString == "close"
+        result := close
+    else if srcString == "hl2"
+        result := hl2
+    else if srcString == "hlc3"
+        result := hlc3
+    else if srcString == "ohlc3"
+        result := (open + high + low + close) / 4
+    else if srcString == "hlcc4"
+        result := (high + low + close + close) / 4
+    result
+
+// ------------------------------------------------
+// 28) Time & Session Management
+// ------------------------------------------------
+var g_time_date = "🕒Time & Session Management🕒"
+timezone = input.string("GMT", "Timezone", options=["GMT-12","GMT-11","GMT-10","GMT-9","GMT-8","GMT-7","CST","GMT-6","GMT-5","GMT-4","GMT-3","GMT-2","GMT-1","GMT","GMT+1","GMT+2","GMT+3","GMT+4","GMT+5","GMT+6","GMT+7","GMT+8","GMT+9","GMT+10","GMT+11","GMT+12"], group=g_time_date, tooltip="Select the timezone for your strategy, affecting session and event timing.")
+useSessions = input.bool(true, "Use Sessions & Weekdays?", group=g_time_date, tooltip="Enable session and weekday filters for your strategy. Required for Week Days, Sessions, or Filters to function.")
+
+// ------------------------------------------------
+// 29) Date Constraints
+// ------------------------------------------------
+var g_date = "🛰️Date Constraints🛰️"
+DateFilter = input.bool(false, "Date Range Filtering?", group=g_date, tooltip="Enable a date range filter to limit backtesting or live trading to specific dates.")
+i_startTime = input.time(timestamp("01 Jan 2019 13:30 +0000"), "Start Time", group=g_date, tooltip="Set the starting date and time for backtesting or live trading simulation.")
+i_endTime = input.time(timestamp("30 Dec 2021 23:30 +0000"), "End Time", group=g_date, tooltip="Set the ending date and time for backtesting or live trading simulation.")
+
+TradeDateIsAllowed() =>
+    bool result = true
+    if DateFilter
+        result := time >= i_startTime and time <= i_endTime
+    result
+	
+// ------------------------------------------------
+// 30) Intraday Sessions
+// ------------------------------------------------
+var g_session_filters = "⏰Intraday Sessions⏰"
+allowSession1 = input.bool(false, "Allow Custom Session #1?", group=g_session_filters, tooltip="Enable trading only during Custom Session 1.")
+allowSession2 = input.bool(false, "Allow Custom Session #2?", group=g_session_filters, tooltip="Enable trading only during Custom Session 2.")
+trade24_7 = input.bool(true, "Trade Constantly?", group=g_session_filters, tooltip="Enable 24/7 trading, typically for whales trading all sessions.")
+endSessionClose = input.bool(false, "Close Positions End of Session?", group=g_session_filters, tooltip="Enable closing all trades at the end of a session.")
+session1Start = input.string("09:00", "Session #1 Start", options=["00:00","00:15","00:30","00:45","01:00","01:15","01:30","01:45","02:00","02:15","02:30","02:45","03:00","03:15","03:30","03:45","04:00","04:15","04:30","04:45","05:00","05:15","05:30","05:45","06:00","06:15","06:30","06:45","07:00","07:15","07:30","07:45","08:00","08:15","08:30","08:45","09:00","09:15","09:30","09:45","10:00","10:15","10:30","10:45","11:00","11:15","11:30","11:45","12:00","12:15","12:30","12:45","13:00","13:15","13:30","13:45","14:00","14:15","14:30","14:45","15:00","15:15","15:30","15:45","16:00","16:15","16:30","16:45","17:00","17:15","17:30","17:45","18:00","18:15","18:30","18:45","19:00","19:15","19:30","19:45","20:00","20:15","20:30","20:45","21:00","21:15","21:30","21:45","22:00","22:15","22:30","22:45","23:00","23:15","23:30","23:45"], group=g_session_filters, inline="session1", tooltip="Set the start time for Custom Session 1 in 15-minute increments.")
+session1End = input.string("17:00", "Session #1 End", options=["00:00","00:15","00:30","00:45","01:00","01:15","01:30","01:45","02:00","02:15","02:30","02:45","03:00","03:15","03:30","03:45","04:00","04:15","04:30","04:45","05:00","05:15","05:30","05:45","06:00","06:15","06:30","06:45","07:00","07:15","07:30","07:45","08:00","08:15","08:30","08:45","09:00","09:15","09:30","09:45","10:00","10:15","10:30","10:45","11:00","11:15","11:30","11:45","12:00","12:15","12:30","12:45","13:00","13:15","13:30","13:45","14:00","14:15","14:30","14:45","15:00","15:15","15:30","15:45","16:00","16:15","16:30","16:45","17:00","17:15","17:30","17:45","18:00","18:15","18:30","18:45","19:00","19:15","19:30","19:45","20:00","20:15","20:30","20:45","21:00","21:15","21:30","21:45","22:00","22:15","22:30","22:45","23:00","23:15","23:30","23:45"], group=g_session_filters, inline="session1", tooltip="Set the end time for Custom Session 1 in 15-minute increments.")
+session2Start = input.string("09:00", "Session #2 Start", options=["00:00","00:15","00:30","00:45","01:00","01:15","01:30","01:45","02:00","02:15","02:30","02:45","03:00","03:15","03:30","03:45","04:00","04:15","04:30","04:45","05:00","05:15","05:30","05:45","06:00","06:15","06:30","06:45","07:00","07:15","07:30","07:45","08:00","08:15","08:30","08:45","09:00","09:15","09:30","09:45","10:00","10:15","10:30","10:45","11:00","11:15","11:30","11:45","12:00","12:15","12:30","12:45","13:00","13:15","13:30","13:45","14:00","14:15","14:30","14:45","15:00","15:15","15:30","15:45","16:00","16:15","16:30","16:45","17:00","17:15","17:30","17:45","18:00","18:15","18:30","18:45","19:00","19:15","19:30","19:45","20:00","20:15","20:30","20:45","21:00","21:15","21:30","21:45","22:00","22:15","22:30","22:45","23:00","23:15","23:30","23:45"], group=g_session_filters, inline="session2", tooltip="Set the start time for Custom Session 2 in 15-minute increments.")
+session2End = input.string("17:00", "Session #2 End", options=["00:00","00:15","00:30","00:45","01:00","01:15","01:30","01:45","02:00","02:15","02:30","02:45","03:00","03:15","03:30","03:45","04:00","04:15","04:30","04:45","05:00","05:15","05:30","05:45","06:00","06:15","06:30","06:45","07:00","07:15","07:30","07:45","08:00","08:15","08:30","08:45","09:00","09:15","09:30","09:45","10:00","10:15","10:30","10:45","11:00","11:15","11:30","11:45","12:00","12:15","12:30","12:45","13:00","13:15","13:30","13:45","14:00","14:15","14:30","14:45","15:00","15:15","15:30","15:45","16:00","16:15","16:30","16:45","17:00","17:15","17:30","17:45","18:00","18:15","18:30","18:45","19:00","19:15","19:30","19:45","20:00","20:15","20:30","20:45","21:00","21:15","21:30","21:45","22:00","22:15","22:30","22:45","23:00","23:15","23:30","23:45"], group=g_session_filters, inline="session2", tooltip="Set the end time for Custom Session 2 in 15-minute increments.")
+
+// ----------------------
+// Session Filter Implementation with Timezone Support
+// ----------------------
+
+// Function to adjust times based on selected timezone
+adjustHour(int inputHour) =>
+    int tzOffset = 0
+    
+    // Parse timezone string to get offset hours
+    if timezone == "GMT"
+        tzOffset := 0
+    else if timezone == "CST"  // Special case for CST
+        tzOffset := -6
+    else
+        // Extract the offset from strings like "GMT+1" or "GMT-8"
+        string tzType = str.substring(timezone, 3, 4)  // "+" or "-"
+        float tzValueFloat = str.tonumber(str.substring(timezone, 4))
+        int tzValue = na(tzValueFloat) ? 0 : int(tzValueFloat)
+        
+        tzOffset := tzType == "+" ? tzValue : -tzValue
+    
+    // Adjust the hour based on timezone offset
+    int adjustedHour = inputHour + tzOffset
+    
+    // Handle day boundaries
+    if adjustedHour >= 24
+        adjustedHour := adjustedHour - 24
+    else if adjustedHour < 0
+        adjustedHour := adjustedHour + 24
+    
+    adjustedHour
+
+// Function to check if current time falls within allowed trading sessions
+isInTradingSession() =>
+    // If sessions are not enabled, always return true
+    if not useSessions
+        true
+    else
+        // Initialize result variable
+        bool inSession = false
+        
+        // Get current bar's time
+        int curHour = hour(time)
+        int curMinute = minute(time)
+        
+        // Adjust hour for timezone - use separate function now
+        int adjHour = adjustHour(curHour)
+        int adjMinute = curMinute  // Minutes don't change with timezone
+        
+        // Rest of function remains the same...
+        // Parse session times - with null handling
+        float s1StartHourFloat = str.tonumber(str.substring(session1Start, 0, 2))
+        int s1StartHour = na(s1StartHourFloat) ? 0 : int(s1StartHourFloat)
+        float s1StartMinuteFloat = str.tonumber(str.substring(session1Start, 3, 5))
+        int s1StartMinute = na(s1StartMinuteFloat) ? 0 : int(s1StartMinuteFloat)
+        float s1EndHourFloat = str.tonumber(str.substring(session1End, 0, 2))
+        int s1EndHour = na(s1EndHourFloat) ? 0 : int(s1EndHourFloat)
+        float s1EndMinuteFloat = str.tonumber(str.substring(session1End, 3, 5))
+        int s1EndMinute = na(s1EndMinuteFloat) ? 0 : int(s1EndMinuteFloat)
+        
+        float s2StartHourFloat = str.tonumber(str.substring(session2Start, 0, 2))
+        int s2StartHour = na(s2StartHourFloat) ? 0 : int(s2StartHourFloat)
+        float s2StartMinuteFloat = str.tonumber(str.substring(session2Start, 3, 5))
+        int s2StartMinute = na(s2StartMinuteFloat) ? 0 : int(s2StartMinuteFloat)
+        float s2EndHourFloat = str.tonumber(str.substring(session2End, 0, 2))
+        int s2EndHour = na(s2EndHourFloat) ? 0 : int(s2EndHourFloat)
+        float s2EndMinuteFloat = str.tonumber(str.substring(session2End, 3, 5))
+        int s2EndMinute = na(s2EndMinuteFloat) ? 0 : int(s2EndMinuteFloat)
+        
+        // Convert to minute-of-day for easier comparison
+        int currentMinOfDay = adjHour * 60 + adjMinute
+        int s1StartMinOfDay = s1StartHour * 60 + s1StartMinute
+        int s1EndMinOfDay = s1EndHour * 60 + s1EndMinute
+        int s2StartMinOfDay = s2StartHour * 60 + s2StartMinute
+        int s2EndMinOfDay = s2EndHour * 60 + s2EndMinute
+        
+        // Check if we're in session 1
+        bool inSession1 = false
+        if s1StartMinOfDay < s1EndMinOfDay
+            // Normal session (doesn't cross midnight)
+            inSession1 := currentMinOfDay >= s1StartMinOfDay and currentMinOfDay < s1EndMinOfDay
+        else
+            // Session crosses midnight
+            inSession1 := currentMinOfDay >= s1StartMinOfDay or currentMinOfDay < s1EndMinOfDay
+        
+        // Check if we're in session 2
+        bool inSession2 = false
+        if s2StartMinOfDay < s2EndMinOfDay
+            // Normal session (doesn't cross midnight)
+            inSession2 := currentMinOfDay >= s2StartMinOfDay and currentMinOfDay < s2EndMinOfDay
+        else
+            // Session crosses midnight
+            inSession2 := currentMinOfDay >= s2StartMinOfDay or currentMinOfDay < s2EndMinOfDay
+        
+        // Determine if we can trade based on session settings
+        if trade24_7
+            // Always trade if 24/7 is enabled
+            inSession := true
+        else if allowSession1 and not allowSession2
+            // Only session 1 is enabled
+            inSession := inSession1
+        else if allowSession2 and not allowSession1
+            // Only session 2 is enabled
+            inSession := inSession2
+        else if allowSession1 and allowSession2
+            // Both sessions are enabled
+            inSession := inSession1 or inSession2
+        
+        // Return the result
+        inSession
+
+// Check if this is the end of a session
+isEndOfSession() =>
+    if not useSessions or not endSessionClose
+        false
+    else
+        // Initialize result variable
+        bool endOfSession = false
+        
+        // Get current bar's time
+        int curHour = hour(time)
+        int curMinute = minute(time)
+        
+        // Adjust hour for timezone - use separate function now
+        int adjHour = adjustHour(curHour)
+        int adjMinute = curMinute  // Minutes don't change with timezone
+        
+        // Parse session end times with null handling
+        float s1EndHourFloat = str.tonumber(str.substring(session1End, 0, 2))
+        int s1EndHour = na(s1EndHourFloat) ? 0 : int(s1EndHourFloat)
+        float s1EndMinuteFloat = str.tonumber(str.substring(session1End, 3, 5))
+        int s1EndMinute = na(s1EndMinuteFloat) ? 0 : int(s1EndMinuteFloat)
+        
+        float s2EndHourFloat = str.tonumber(str.substring(session2End, 0, 2))
+        int s2EndHour = na(s2EndHourFloat) ? 0 : int(s2EndHourFloat)
+        float s2EndMinuteFloat = str.tonumber(str.substring(session2End, 3, 5))
+        int s2EndMinute = na(s2EndMinuteFloat) ? 0 : int(s2EndMinuteFloat)
+        
+        // Check if it's the end of session 1 or session 2
+        if allowSession1 and adjHour == s1EndHour and adjMinute == s1EndMinute
+            endOfSession := true
+        
+        if allowSession2 and adjHour == s2EndHour and adjMinute == s2EndMinute
+            endOfSession := true
+        
+        // Return the result
+        endOfSession
+
+// ------------------------------------------------
+// 31) Allowed Trading Days
+// ------------------------------------------------
+var g_weekdays = "🧭Allowed Trading Days🧭"
+monday = input.bool(true, "Mon", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Monday.")
+tuesday = input.bool(true, "Tue", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Tuesday.")
+wednesday = input.bool(true, "Wed", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Wednesday.")
+thursday = input.bool(true, "Thu", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Thursday.")
+friday = input.bool(true, "Fri", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Friday.")
+saturday = input.bool(true, "Sat", group=g_weekdays, inline="weekdays", tooltip="Allow trades on Saturday.")
+sunday = input.bool(true, "Sun", group=g_weekdays, inline="weekdays", tooltip="Allow trades on these days.")
+
+TradeDayIsAllowed() =>
+    int day = dayofweek(time)
+    bool allowed = true
+    if day == 2 and not monday        // Monday
+        allowed := false
+    else if day == 3 and not tuesday  // Tuesday
+        allowed := false
+    else if day == 4 and not wednesday  // Wednesday
+        allowed := false
+    else if day == 5 and not thursday   // Thursday
+        allowed := false
+    else if day == 6 and not friday     // Friday
+        allowed := false
+    else if day == 7 and not saturday   // Saturday
+        allowed := false
+    else if day == 1 and not sunday     // Sunday
+        allowed := false
+    allowed
+
+// ------------------------------------------------
+// 32) Realtime Trading Filter
+// ------------------------------------------------
+var g_live_trade = "🚀Realtime Trading Filter🚀"
+LiveTradeFilter = input.bool(false, "Enable Real Time Filter?", group=g_live_trade, tooltip="Enable a filter to limit real time trading to start from a specific date, ensuring real-time trade execution aligns with your strategy.")
+i_liveStartTime = input.time(timestamp("25 Feb 2025 00:00 +0000"), "Real Time Starts", group=g_live_trade, tooltip="Set the starting date and time for live trading to begin sending real-time alerts.")
+
+LiveTradeIsAllowed() =>
+    bool result = true
+    if LiveTradeFilter
+        result := time >= i_liveStartTime
+    result
+
+// ------------------------------------------------
+// 33) Minimalist Bot Mode
+// ------------------------------------------------
+var g_simple_bot = "🤖Minimalist Bot Mode🤖"
+useSimpleBot = input.bool(false, "Use Minimalist Bot?", group=g_simple_bot, tooltip="Enable a minimalistic bot mode for basic alerts, useful for debugging or basic trading setups.")
+useSafetyTP = input.bool(false, "Safety Take-Profit?", group=g_simple_bot, tooltip="Enable a safety take-profit level to send to the exchange, ensuring minimal profit targets.")
+useSafetySL = input.bool(false, "Safety Stop-Loss?", group=g_simple_bot, tooltip="Enable a safety stop-loss level to send to the exchange, ensuring minimal risk thresholds.")
+telegramChannelID = input.string("", "Telegram Debugging ID", group=g_simple_bot, tooltip="Enter your Telegram channel ID for alert debugging and notifications, enhancing monitoring.")
+
+// ----------------------
+// Multi Take Profit Implementation - Section 1
+// ----------------------
+var bool stopLossDisabled = false  // Initialize the flag
+var int lastEntryCandle = 0
+var float entrySL = na
+var float entryTP = na
+var float entryPrice = 0.0
+var bool tradeActive = false
+var bool isLong = false
+var bool tp1Reached = false
+var bool tp2Reached = false
+var bool tp3Reached = false
+var float tp1Price = 0.0
+var float tp2Price = 0.0
+var float tp3Price = 0.0
+var int longTradesCount = 0
+var int shortTradesCount = 0
+var int lastTradeDirection = 0
+var int lastTrendilioExitBar = 0
+var int lastEntryBarIndex = 0
+var int lastExitBarIndex = 0
+var bool waitForNewBarEntry = false
+var bool waitForNewBarExit = false
+var bool inPosition = false
+var string currentPosition = "flat" // "flat", "long", or "short"
+bool validLongEntry = true
+bool validShortEntry = true
+bool validEntry = true
+
+// Trendilio stabilization
+var int trendilioSignalCooldownPeriod = 3  // Number of bars to wait before new signals
+var int trendilioSignalCooldownCounter = 0
+var bool lastSignalWasLong = false
+var bool lastSignalWasShort = false
+var float avpchSmoothed = 0.0
+
+// --- Rounding Function
+round_to_precision(float v, int p) => math.round(v * math.pow(10, p)) / math.pow(10, p)
+
+// Helper Function: Round Quantity
+f_round_qty(float qty) =>
+    if roundToDecimal
+        factor = math.pow(10, manualDecimalPoints)
+        method = roundingMethod == "Ceil" ? math.ceil(qty * factor) : math.round(qty * factor)
+        round_to_precision(method / factor, manualDecimalPoints)
+    else
+        qty
+
+// Function to calculate ATR based on source type and settings
+// Remove the getATR function entirely
+
+// Declare variables for all the ATR calculations we might need
+var float standardATR = 0.0
+var float swingATR = 0.0
+var float standardATR_SL = 0.0
+var float swingATR_SL = 0.0
+var float standardATR_TP = 0.0
+var float swingATR_TP = 0.0
+
+// Calculate all possible ATR values directly at the global scope
+// For global ATR
+standardATR := ta.atr(atrLength)
+float swingHigh = ta.highest(high, atrSwingLookback)
+float swingLow = ta.lowest(low, atrSwingLookback)
+float swingRange = math.abs(swingHigh - swingLow)
+swingATR := ta.sma(swingRange, atrLength)
+
+// For SL-specific ATR (if enabled)
+if useCustomAtrSL
+    standardATR_SL := ta.atr(atrLengthSL)
+    float swingHigh_SL = ta.highest(high, atrSwingLookback)
+    float swingLow_SL = ta.lowest(low, atrSwingLookback)
+    float swingRange_SL = math.abs(swingHigh_SL - swingLow_SL)
+    swingATR_SL := ta.sma(swingRange_SL, atrLengthSL)
+else
+    standardATR_SL := standardATR
+    swingATR_SL := swingATR
+
+// For TP-specific ATR (if enabled)
+if useCustomAtrTP
+    standardATR_TP := ta.atr(atrLengthTP)
+    float swingHigh_TP = ta.highest(high, atrSwingLookback)
+    float swingLow_TP = ta.lowest(low, atrSwingLookback)
+    float swingRange_TP = math.abs(swingHigh_TP - swingLow_TP)
+    swingATR_TP := ta.sma(swingRange_TP, atrLengthTP)
+else
+    standardATR_TP := standardATR
+    swingATR_TP := swingATR
+
+// Then simply select the right values based on the source type
+var float atrGlobal = 0.0
+var float atrSL = 0.0
+var float atrTP = 0.0
+
+atrGlobal := atrSource == "Source" ? standardATR : swingATR
+atrSL := useCustomAtrSL ? (atrSource == "Source" ? standardATR_SL : swingATR_SL) : atrGlobal
+atrTP := useCustomAtrTP ? (atrSource == "Source" ? standardATR_TP : swingATR_TP) : atrGlobal
+
+var float highestVal = 0.0
+var float lowestVal = 0.0
+var float ma1Val = 0.0
+var float ma5Val = 0.0
+var float keltnerVal = 0.0
+var float bollingerStdevVal = 0.0
+
+// Update pre-calculated values on each bar
+highestVal := ta.highest(high, hhllLookback)
+lowestVal := ta.lowest(low, hhllLookback)
+ma1Val := ta.ema(close, ma1Period)
+ma5Val := ta.ema(close, ma5Period)
+keltnerVal := ta.atr(keltnerLength)
+bollingerStdevVal := ta.stdev(close, bollingerLength)
+
+// Update pre-calculated values on each bar
+highestVal := ta.highest(high, hhllLookback)
+lowestVal := ta.lowest(low, hhllLookback)
+ma1Val := ta.ema(close, ma1Period)
+ma5Val := ta.ema(close, ma5Period)
+keltnerVal := ta.atr(keltnerLength)
+bollingerStdevVal := ta.stdev(close, bollingerLength)
+
+// Function to calculate stop loss level
+calculateStopLoss(bool isLongPosition, float curPrice) =>
+    float stopLevel = na
+    
+    if isLongPosition
+        if stopLossType == "None"
+            stopLevel := curPrice * 0.01  // Very small value, effectively disabled
+        else if stopLossType == "ATR"
+            stopLevel := curPrice - atrSL * (useCustomAtrSL ? atrMultiplierForStoploss : globalAtrMultiplier)
+        else if stopLossType == "Fixed Percent"
+            stopLevel := curPrice * (1 - stopLossLongPercent / 100)
+        else if stopLossType == "HH/LL"
+            stopLevel := lowestVal
+        else if stopLossType == "Keltner"
+            stopLevel := curPrice - keltnerMultiplier * keltnerVal
+        else if stopLossType == "Bollinger Bands"
+            stopLevel := curPrice - bollingerStDev * bollingerStdevVal
+        else if stopLossType == "Donchian Channel"
+            stopLevel := lowestVal
+        else if stopLossType == "MA #1"
+            stopLevel := ma1Val
+        else if stopLossType == "MA #5"
+            stopLevel := ma5Val
+        else
+            stopLevel := curPrice * (1 - stopLossLongPercent / 100)
+    else
+        if stopLossType == "None"
+            stopLevel := curPrice * 100  // Very large value, effectively disabled
+        else if stopLossType == "ATR"
+            stopLevel := curPrice + atrSL * (useCustomAtrSL ? atrMultiplierForStoploss : globalAtrMultiplier)
+        else if stopLossType == "Fixed Percent"
+            stopLevel := curPrice * (1 + stopLossShortPercent / 100)
+        else if stopLossType == "HH/LL"
+            stopLevel := highestVal
+        else if stopLossType == "Keltner"
+            stopLevel := curPrice + keltnerMultiplier * keltnerVal
+        else if stopLossType == "Bollinger Bands"
+            stopLevel := curPrice + bollingerStDev * bollingerStdevVal
+        else if stopLossType == "Donchian Channel"
+            stopLevel := highestVal
+        else if stopLossType == "MA #1"
+            stopLevel := ma1Val
+        else if stopLossType == "MA #5"
+            stopLevel := ma5Val
+        else
+            stopLevel := curPrice * (1 + stopLossShortPercent / 100)
+    
+    stopLevel
+	
+// Function to calculate take profit level
+calculateTakeProfit(bool isLongPosition, float curPrice, float stopLevel) =>
+    float takeLevel = na
+    
+    if isLongPosition
+        if takeProfitType == "Fixed Percentage"
+            takeLevel := curPrice * (1 + takeProfitLongPercent / 100)
+        else if takeProfitType == "ATR"
+            takeLevel := curPrice + atrTP * (useCustomAtrTP ? atrMultiplierForTakeProfit : globalAtrMultiplier)
+        else if takeProfitType == "R:R"
+            if stopLossType == "None" or stopLevel == curPrice * 0.01
+                // When stop loss is disabled but using R:R, fall back to fixed percentage
+                takeLevel := curPrice * (1 + takeProfitLongPercent / 100)
+            else
+                // Normal R:R calculation when stop loss is active
+                float localRisk = curPrice - stopLevel
+                takeLevel := curPrice + localRisk * rrRatioLong
+        else if takeProfitType == "Structure HH/LL" or takeProfitType == "Structure High/Low"
+            takeLevel := highestVal
+        else
+            takeLevel := curPrice * (1 + takeProfitLongPercent / 100)
+    else
+        if takeProfitType == "Fixed Percentage"
+            takeLevel := curPrice * (1 - takeProfitShortPercent / 100)
+        else if takeProfitType == "ATR"
+            takeLevel := curPrice - atrTP * (useCustomAtrTP ? atrMultiplierForTakeProfit : globalAtrMultiplier)
+        else if takeProfitType == "R:R"
+            if stopLossType == "None" or stopLevel == curPrice * 100
+                // When stop loss is disabled but using R:R, fall back to fixed percentage
+                takeLevel := curPrice * (1 - takeProfitShortPercent / 100)
+            else
+                // Normal R:R calculation when stop loss is active
+                float localRisk = stopLevel - curPrice
+                takeLevel := curPrice - localRisk * rrRatioShort
+        else if takeProfitType == "Structure HH/LL" or takeProfitType == "Structure High/Low"
+            takeLevel := lowestVal
+        else
+            takeLevel := curPrice * (1 - takeProfitShortPercent / 100)
+    
+    takeLevel
+
+// Function to calculate multi-TP levels
+calculateMultiTpLevels(bool isLongPosition, float entryPrice, float stopLevel) =>
+    float tp1 = 0.0
+    float tp2 = 0.0
+    float tp3 = 0.0
+    
+    // Get base TP level from the take profit calculation
+    float baseTP = calculateTakeProfit(isLongPosition, entryPrice, stopLevel)
+    
+    if isLongPosition
+        // Long position TP calculations
+        if takeProfitType == "Fixed Percentage"
+            tp1 := entryPrice * (1 + (takeProfitLongPercent * tp1Level / 100) / 100)
+            tp2 := entryPrice * (1 + (takeProfitLongPercent * tp2Level / 100) / 100)
+            tp3 := entryPrice * (1 + (takeProfitLongPercent * tp3Level / 100) / 100)
+        else
+            // For all other types, scale based on base TP
+            float distance = math.abs(baseTP - entryPrice)
+            tp1 := entryPrice + distance * (tp1Level / 100)
+            tp2 := entryPrice + distance * (tp2Level / 100)
+            tp3 := entryPrice + distance * (tp3Level / 100)
+    else
+        // Short position TP calculations
+        if takeProfitType == "Fixed Percentage"
+            tp1 := entryPrice * (1 - (takeProfitShortPercent * tp1Level / 100) / 100)
+            tp2 := entryPrice * (1 - (takeProfitShortPercent * tp2Level / 100) / 100)
+            tp3 := entryPrice * (1 - (takeProfitShortPercent * tp3Level / 100) / 100)
+        else
+            // For all other types, scale based on base TP
+            float distance = math.abs(entryPrice - baseTP)
+            tp1 := entryPrice - distance * (tp1Level / 100)
+            tp2 := entryPrice - distance * (tp2Level / 100)
+            tp3 := entryPrice - distance * (tp3Level / 100)
+    
+    [tp1, tp2, tp3]
+
+// Pre-calculate stop-loss and take-profit levels for current bar
+var float slLong = calculateStopLoss(true, close)
+var float tpLong = calculateTakeProfit(true, close, slLong)
+var float slShort = calculateStopLoss(false, close)
+var float tpShort = calculateTakeProfit(false, close, slShort)
+
+// Update levels on each bar
+slLong := calculateStopLoss(true, close)
+tpLong := calculateTakeProfit(true, close, slLong)
+slShort := calculateStopLoss(false, close)
+tpShort := calculateTakeProfit(false, close, slShort)
+
+// Pre-calculate multi-TP levels
+var float tp1Long = 0.0
+var float tp2Long = 0.0
+var float tp3Long = 0.0
+var float tp1Short = 0.0
+var float tp2Short = 0.0
+var float tp3Short = 0.0
+
+// Calculate multi-TP levels only if needed
+if useMultiTP
+    [tp1L, tp2L, tp3L] = calculateMultiTpLevels(true, close, slLong)
+    tp1Long := tp1L
+    tp2Long := tp2L
+    tp3Long := tp3L
+    
+    [tp1S, tp2S, tp3S] = calculateMultiTpLevels(false, close, slShort)
+    tp1Short := tp1S
+    tp2Short := tp2S
+    tp3Short := tp3S
+
+// Define _calculateLeverage function
+_calculateLeverage(float _leverage, float _value, bool _shortSell) =>
+    _shortSell ? _value * _leverage / (_leverage - 1 + i_Maintenance / 100 * _leverage)
+              : _leverage * _value / (_leverage + 1 - i_Maintenance / 100 * _leverage)
+
+// Function to approximate ADX
+adx_approximation(int length) =>
+    float tr = ta.tr(true)
+    float atr = ta.ema(tr, length)
+    float up = high - high[1]
+    float down = low[1] - low
+    float plusDM = up > down and up > 0 ? up : 0
+    float minusDM = down > up and down > 0 ? down : 0
+    float smoothedPlusDM = ta.ema(plusDM, length)
+    float smoothedMinusDM = ta.ema(minusDM, length)
+    float plusDI = 100 * smoothedPlusDM / atr
+    float minusDI = 100 * smoothedMinusDM / atr
+    float dx = math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100
+    float adx = ta.ema(dx, length)
+    adx
+
+// Define the risk source based on user selection for Dynamic Algo
+_get_risk_source() =>
+    float result = close  // Default value
+    if daSource == "close"
+        result := close
+    else if daSource == "volume"
+        result := volume
+    else if daSource == "MA5"
+        result := ta.sma(close, 5)
+    else if daSource == "MA25"
+        result := ta.sma(close, 25)
+    else if daSource == "MACD"
+        result := ta.sma(close, 5) - ta.sma(close, 25)
+    else if daSource == "ATR"
+        result := ta.atr(14)
+    else if daSource == "ADX"
+        result := adx_approximation(14)
+    result
+
+// Calculate risk zones for Dynamic Algo
+var float riskSource = _get_risk_source()
+var float risk_highest = ta.highest(riskSource, 100)
+var float risk_lowest = ta.lowest(riskSource, 100)
+
+// Update them on each bar
+riskSource := _get_risk_source()
+risk_highest := ta.highest(riskSource, 100)
+risk_lowest := ta.lowest(riskSource, 100)
+
+var float risk_third = (risk_highest - risk_lowest) / 3
+var float risk_zone_1 = risk_lowest + risk_third
+var float risk_zone_2 = risk_highest - risk_third
+
+// Update these on each bar too
+risk_third := (risk_highest - risk_lowest) / 3
+risk_zone_1 := risk_lowest + risk_third
+risk_zone_2 := risk_highest - risk_third
+
+// Original Dynamic Algo implementation with simple thresholds
+get_da_multiplier() =>
+    float result = da2  // Default value
+    if riskSource < risk_zone_1
+        result := da1
+    else if riskSource < risk_zone_2
+        result := da2
+    else
+        result := da3
+    result
+
+// Improved Dynamic Algo 2 - Enhanced threshold approach
+get_da2_multiplier() =>
+    // Use a shorter lookback period for more recent market conditions
+    float recent_highest = ta.highest(riskSource, 50)
+    float recent_lowest = ta.lowest(riskSource, 50)
+    
+    // Calculate adaptive thresholds based on recent market conditions
+    float value_range = recent_highest - recent_lowest
+    float adaptive_zone_1 = recent_lowest + value_range * 0.25  // 25% threshold
+    float adaptive_zone_2 = recent_lowest + value_range * 0.75  // 75% threshold
+    
+    // Current position within recent range (0-100%)
+    float position_pct = 100 * (riskSource - recent_lowest) / (value_range == 0 ? 1 : value_range)
+    
+    // Calculate rate of change to detect momentum
+    float roc = (riskSource / riskSource[3] - 1) * 100
+    
+    float result = da2  // Default value
+    
+    // Adjust multiplier based on both position and momentum
+    if riskSource < adaptive_zone_1
+        // Lower zone (0-25%)
+        float momentum_boost = roc > 0 ? 0.2 : 0  // Small boost if momentum is positive
+        result := math.min(da1 * (1 + momentum_boost), da3)  // Cap at da3
+    else if riskSource < adaptive_zone_2
+        // Middle zone (25-75%)
+        // Use a weighted average based on exact position
+        float mid_weight = (position_pct - 25) / 50  // 0.0 at 25%, 1.0 at 75%
+        result := da1 + (da3 - da1) * mid_weight
+    else
+        // Upper zone (75-100%)
+        float momentum_discount = roc < 0 ? 0.2 : 0  // Small discount if momentum is negative
+        result := math.max(da3 * (1 - momentum_discount), da1)  // Floor at da1
+    
+    result
+
+// Dynamic Algo 3 - Enhanced Range Analysis
+get_da3_multiplier() =>
+    // Use shorter lookback for more responsive range calculation
+    float shorter_risk_highest = ta.highest(riskSource, 75)
+    float shorter_risk_lowest = ta.lowest(riskSource, 75)
+    
+    // Create four zones instead of three for more granular scaling
+    float shorter_range = shorter_risk_highest - shorter_risk_lowest
+    float zone_1 = shorter_risk_lowest + shorter_range * 0.25
+    float zone_2 = shorter_risk_lowest + shorter_range * 0.5
+    float zone_3 = shorter_risk_lowest + shorter_range * 0.75
+    
+    float result = da2  // Default value
+    
+    // Apply multipliers based on more granular zones
+    if riskSource < zone_1
+        result := da1 * 0.9  // Slightly reduced for very low zone
+    else if riskSource < zone_2
+        result := da1  // Standard conservative sizing
+    else if riskSource < zone_3
+        result := da2  // Standard moderate sizing
+    else
+        result := da2 * 1.1  // Slightly enhanced for highest zone
+    
+    result
+    
+// Dynamic Algo 4 - Biased Threshold Approach
+get_da4_multiplier() =>
+    // Determine current market bias based on simple trend analysis
+    bool uptrend = ta.sma(close, 20) > ta.sma(close, 50)
+    
+    float result = da2  // Default value
+    
+    // Set different thresholds based on market bias
+    if uptrend
+        // In uptrends, we use lower thresholds to increase position size sooner
+        float risk_zone_bull_1 = risk_lowest + (risk_highest - risk_lowest) * 0.25
+        float risk_zone_bull_2 = risk_lowest + (risk_highest - risk_lowest) * 0.6
+        
+        if riskSource < risk_zone_bull_1
+            result := da1
+        else if riskSource < risk_zone_bull_2
+            result := da2
+        else
+            result := da3
+    else
+        // In downtrends, we use higher thresholds to be more conservative
+        float risk_zone_bear_1 = risk_lowest + (risk_highest - risk_lowest) * 0.4
+        float risk_zone_bear_2 = risk_lowest + (risk_highest - risk_lowest) * 0.75
+        
+        if riskSource < risk_zone_bear_1
+            result := da1
+        else if riskSource < risk_zone_bear_2
+            result := da2
+        else
+            result := da3
+    
+    result
+
+// Dynamic Algo 5 - Moving Average Smoothed Thresholds
+get_da5_multiplier() =>
+    // Apply moving averages to smooth the risk source
+    float smoothed_risk = ta.sma(riskSource, 3)
+    
+    // Create standard third-based zones from original algorithm
+    float risk_third_local = (risk_highest - risk_lowest) / 3
+    float risk_zone_1_local = risk_lowest + risk_third_local
+    float risk_zone_2_local = risk_highest - risk_third_local
+    
+    // Declare multiplier variable before the conditional statements
+    float current_multiplier = 0.0
+    
+    // Apply standard threshold logic but with smoothed input
+    if smoothed_risk < risk_zone_1_local
+        current_multiplier := da1
+    else if smoothed_risk < risk_zone_2_local
+        current_multiplier := da2
+    else
+        current_multiplier := da3
+    
+    // Apply a small dampening factor to reduce oscillation
+    float prev_multiplier = nz(current_multiplier[1], current_multiplier)
+    float result = current_multiplier * 0.7 + prev_multiplier * 0.3
+    
+    result
+
+// Position Sizing with Leverage
+var float positionSize = na
+var float accountRisk = strategy.equity * (risk / 100)
+
+// Update position size calculations on each bar
+accountRisk := strategy.equity * (risk / 100)
+
+// Initialize leverage values
+var float firstLeverageLongAverage = _calculateLeverage(userLeverage, close, false)
+var float firstLeverageShortAverage = _calculateLeverage(userLeverage, close, true)
+
+// Update leverage values on each bar
+firstLeverageLongAverage := _calculateLeverage(userLeverage, close, false)
+firstLeverageShortAverage := _calculateLeverage(userLeverage, close, true)
+
+// Calculate position size based on selected method
+if not useRawQty
+    if positionSizeType == "Manual"
+        positionSize := (strategy.equity * (risk / 100) * userLeverage) / close
+    else if positionSizeType == "Dynamic Algo"
+        float daMultiplier = get_da_multiplier()
+        if daMultiplier == 0
+            positionSize := 0
+        else
+            positionSize := (strategy.equity * (risk / 100) * userLeverage * daMultiplier) / close
+    else if positionSizeType == "Dynamic Algo 2"
+        float daMultiplier = get_da2_multiplier()
+        if daMultiplier == 0
+            positionSize := 0
+        else
+            positionSize := (strategy.equity * (risk / 100) * userLeverage * daMultiplier) / close
+    else if positionSizeType == "Dynamic Algo 3"
+        float daMultiplier = get_da3_multiplier()
+        if daMultiplier == 0
+            positionSize := 0
+        else
+            positionSize := (strategy.equity * (risk / 100) * userLeverage * daMultiplier) / close
+    else if positionSizeType == "Dynamic Algo 4"
+        float daMultiplier = get_da4_multiplier()
+        if daMultiplier == 0
+            positionSize := 0
+        else
+            positionSize := (strategy.equity * (risk / 100) * userLeverage * daMultiplier) / close
+    else if positionSizeType == "Dynamic Algo 5"
+        float daMultiplier = get_da5_multiplier()
+        if daMultiplier == 0
+            positionSize := 0
+        else
+            positionSize := (strategy.equity * (risk / 100) * userLeverage * daMultiplier) / close
+    else if positionSizeType == "Risk Based"
+        positionSize := (strategy.equity * (risk / 100) * userLeverage) / close
+else
+    positionSize := rawPositionQty * userLeverage
+    
+// Round the position size for accuracy
+var float roundedQty = f_round_qty(positionSize)
+roundedQty := positionSize == 0 ? 0 : math.max(f_round_qty(positionSize), 0.01)
+
+// Pre-calculate all MA types for each length at root level
+// For MA #1
+var float ema_ma1 = na
+var float sma_ma1 = na
+var float hma_ma1 = na
+var float wma_ma1 = na
+var float dema_ma1_e1 = na
+var float dema_ma1_e2 = na
+var float dema_ma1 = na
+var float t3_ma1_e1 = na
+var float t3_ma1_e2 = na
+var float t3_ma1_e3 = na
+var float t3_ma1_e4 = na
+var float t3_ma1_e5 = na
+var float t3_ma1_e6 = na
+var float t3_ma1 = na
+
+// For MA #2
+var float ema_ma2 = na
+var float sma_ma2 = na
+var float hma_ma2 = na
+var float wma_ma2 = na
+var float dema_ma2_e1 = na
+var float dema_ma2_e2 = na
+var float dema_ma2 = na
+var float t3_ma2_e1 = na
+var float t3_ma2_e2 = na
+var float t3_ma2_e3 = na
+var float t3_ma2_e4 = na
+var float t3_ma2_e5 = na
+var float t3_ma2_e6 = na
+var float t3_ma2 = na
+
+// For MA #3
+var float ema_ma3 = na
+var float sma_ma3 = na
+var float hma_ma3 = na
+var float wma_ma3 = na
+var float dema_ma3_e1 = na
+var float dema_ma3_e2 = na
+var float dema_ma3 = na
+var float t3_ma3_e1 = na
+var float t3_ma3_e2 = na
+var float t3_ma3_e3 = na
+var float t3_ma3_e4 = na
+var float t3_ma3_e5 = na
+var float t3_ma3_e6 = na
+var float t3_ma3 = na
+
+// For MA #4
+var float ema_ma4 = na
+var float sma_ma4 = na
+var float hma_ma4 = na
+var float wma_ma4 = na
+var float dema_ma4_e1 = na
+var float dema_ma4_e2 = na
+var float dema_ma4 = na
+var float t3_ma4_e1 = na
+var float t3_ma4_e2 = na
+var float t3_ma4_e3 = na
+var float t3_ma4_e4 = na
+var float t3_ma4_e5 = na
+var float t3_ma4_e6 = na
+var float t3_ma4 = na
+
+// For MA #5
+var float ema_ma5 = na
+var float sma_ma5 = na
+var float hma_ma5 = na
+var float wma_ma5 = na
+var float dema_ma5_e1 = na
+var float dema_ma5_e2 = na
+var float dema_ma5 = na
+var float t3_ma5_e1 = na
+var float t3_ma5_e2 = na
+var float t3_ma5_e3 = na
+var float t3_ma5_e4 = na
+var float t3_ma5_e5 = na
+var float t3_ma5_e6 = na
+var float t3_ma5 = na
+
+// For HMA bar
+var float hma = na   // Changed from hma_bar to hma to match original code
+var color hmacolor = na
+
+// Update MA values on each bar
+// Calculate all possible MA types for MA #1
+ema_ma1 := ta.ema(close, maLength1)
+sma_ma1 := ta.sma(close, maLength1)
+hma_ma1 := ta.hma(close, maLength1)
+wma_ma1 := ta.wma(close, maLength1)
+dema_ma1_e1 := ta.ema(close, maLength1)
+dema_ma1_e2 := ta.ema(dema_ma1_e1, maLength1)
+dema_ma1 := 2 * dema_ma1_e1 - dema_ma1_e2
+
+// T3 calculation for MA #1
+float vFactor_ma = 0.7
+t3_ma1_e1 := ta.ema(close, maLength1)
+t3_ma1_e2 := ta.ema(t3_ma1_e1, maLength1)
+t3_ma1_e3 := ta.ema(t3_ma1_e2, maLength1)
+t3_ma1_e4 := ta.ema(t3_ma1_e3, maLength1)
+t3_ma1_e5 := ta.ema(t3_ma1_e4, maLength1)
+t3_ma1_e6 := ta.ema(t3_ma1_e5, maLength1)
+float c1_ma = -vFactor_ma * vFactor_ma * vFactor_ma
+float c2_ma = 3 * vFactor_ma * vFactor_ma + 3 * vFactor_ma * vFactor_ma * vFactor_ma
+float c3_ma = -6 * vFactor_ma * vFactor_ma - 3 * vFactor_ma - 3 * vFactor_ma * vFactor_ma * vFactor_ma
+float c4_ma = 1 + 3 * vFactor_ma + vFactor_ma * vFactor_ma + 3 * vFactor_ma * vFactor_ma
+t3_ma1 := c1_ma * t3_ma1_e6 + c2_ma * t3_ma1_e5 + c3_ma * t3_ma1_e4 + c4_ma * t3_ma1_e3
+
+// Calculate all possible MA types for MA #2
+ema_ma2 := ta.ema(close, maLength2)
+sma_ma2 := ta.sma(close, maLength2)
+hma_ma2 := ta.hma(close, maLength2)
+wma_ma2 := ta.wma(close, maLength2)
+dema_ma2_e1 := ta.ema(close, maLength2)
+dema_ma2_e2 := ta.ema(dema_ma2_e1, maLength2)
+dema_ma2 := 2 * dema_ma2_e1 - dema_ma2_e2
+
+// T3 calculation for MA #2
+t3_ma2_e1 := ta.ema(close, maLength2)
+t3_ma2_e2 := ta.ema(t3_ma2_e1, maLength2)
+t3_ma2_e3 := ta.ema(t3_ma2_e2, maLength2)
+t3_ma2_e4 := ta.ema(t3_ma2_e3, maLength2)
+t3_ma2_e5 := ta.ema(t3_ma2_e4, maLength2)
+t3_ma2_e6 := ta.ema(t3_ma2_e5, maLength2)
+t3_ma2 := c1_ma * t3_ma2_e6 + c2_ma * t3_ma2_e5 + c3_ma * t3_ma2_e4 + c4_ma * t3_ma2_e3
+
+// Calculate all possible MA types for MA #3
+ema_ma3 := ta.ema(close, maLength3)
+sma_ma3 := ta.sma(close, maLength3)
+hma_ma3 := ta.hma(close, maLength3)
+wma_ma3 := ta.wma(close, maLength3)
+dema_ma3_e1 := ta.ema(close, maLength3)
+dema_ma3_e2 := ta.ema(dema_ma3_e1, maLength3)
+dema_ma3 := 2 * dema_ma3_e1 - dema_ma3_e2
+
+// T3 calculation for MA #3
+t3_ma3_e1 := ta.ema(close, maLength3)
+t3_ma3_e2 := ta.ema(t3_ma3_e1, maLength3)
+t3_ma3_e3 := ta.ema(t3_ma3_e2, maLength3)
+t3_ma3_e4 := ta.ema(t3_ma3_e3, maLength3)
+t3_ma3_e5 := ta.ema(t3_ma3_e4, maLength3)
+t3_ma3_e6 := ta.ema(t3_ma3_e5, maLength3)
+t3_ma3 := c1_ma * t3_ma3_e6 + c2_ma * t3_ma3_e5 + c3_ma * t3_ma3_e4 + c4_ma * t3_ma3_e3
+
+// Calculate all possible MA types for MA #4
+ema_ma4 := ta.ema(close, maLength4)
+sma_ma4 := ta.sma(close, maLength4)
+hma_ma4 := ta.hma(close, maLength4)
+wma_ma4 := ta.wma(close, maLength4)
+dema_ma4_e1 := ta.ema(close, maLength4)
+dema_ma4_e2 := ta.ema(dema_ma4_e1, maLength4)
+dema_ma4 := 2 * dema_ma4_e1 - dema_ma4_e2
+
+// T3 calculation for MA #4
+t3_ma4_e1 := ta.ema(close, maLength4)
+t3_ma4_e2 := ta.ema(t3_ma4_e1, maLength4)
+t3_ma4_e3 := ta.ema(t3_ma4_e2, maLength4)
+t3_ma4_e4 := ta.ema(t3_ma4_e3, maLength4)
+t3_ma4_e5 := ta.ema(t3_ma4_e4, maLength4)
+t3_ma4_e6 := ta.ema(t3_ma4_e5, maLength4)
+t3_ma4 := c1_ma * t3_ma4_e6 + c2_ma * t3_ma4_e5 + c3_ma * t3_ma4_e4 + c4_ma * t3_ma4_e3
+
+// Calculate all possible MA types for MA #5
+ema_ma5 := ta.ema(close, maLength5)
+sma_ma5 := ta.sma(close, maLength5)
+hma_ma5 := ta.hma(close, maLength5)
+wma_ma5 := ta.wma(close, maLength5)
+dema_ma5_e1 := ta.ema(close, maLength5)
+dema_ma5_e2 := ta.ema(dema_ma5_e1, maLength5)
+dema_ma5 := 2 * dema_ma5_e1 - dema_ma5_e2
+
+// T3 calculation for MA #5
+t3_ma5_e1 := ta.ema(close, maLength5)
+t3_ma5_e2 := ta.ema(t3_ma5_e1, maLength5)
+t3_ma5_e3 := ta.ema(t3_ma5_e2, maLength5)
+t3_ma5_e4 := ta.ema(t3_ma5_e3, maLength5)
+t3_ma5_e5 := ta.ema(t3_ma5_e4, maLength5)
+t3_ma5_e6 := ta.ema(t3_ma5_e5, maLength5)
+t3_ma5 := c1_ma * t3_ma5_e6 + c2_ma * t3_ma5_e5 + c3_ma * t3_ma5_e4 + c4_ma * t3_ma5_e3
+
+// HMA bar calculation
+if boolhmabar
+    hma := ta.hma(close, hmabar)
+    hmacolor := close > hma ? color.lime : color.red
+
+// Modified getMA function that uses pre-calculated values
+getMA(string type, int length) =>
+    float result = ema_ma1  // Default initialization
+    
+    if length == maLength1
+        if type == "EMA"
+            result := ema_ma1
+        else if type == "SMA"
+            result := sma_ma1
+        else if type == "HMA"
+            result := hma_ma1
+        else if type == "WMA"
+            result := wma_ma1
+        else if type == "DEMA"
+            result := dema_ma1
+        else if type == "T3"
+            result := t3_ma1
+    else if length == maLength2
+        if type == "EMA"
+            result := ema_ma2
+        else if type == "SMA"
+            result := sma_ma2
+        else if type == "HMA"
+            result := hma_ma2
+        else if type == "WMA"
+            result := wma_ma2
+        else if type == "DEMA"
+            result := dema_ma2
+        else if type == "T3"
+            result := t3_ma2
+    else if length == maLength3
+        if type == "EMA"
+            result := ema_ma3
+        else if type == "SMA"
+            result := sma_ma3
+        else if type == "HMA"
+            result := hma_ma3
+        else if type == "WMA"
+            result := wma_ma3
+        else if type == "DEMA"
+            result := dema_ma3
+        else if type == "T3"
+            result := t3_ma3
+    else if length == maLength4
+        if type == "EMA"
+            result := ema_ma4
+        else if type == "SMA"
+            result := sma_ma4
+        else if type == "HMA"
+            result := hma_ma4
+        else if type == "WMA"
+            result := wma_ma4
+        else if type == "DEMA"
+            result := dema_ma4
+        else if type == "T3"
+            result := t3_ma4
+    else if length == maLength5
+        if type == "EMA"
+            result := ema_ma5
+        else if type == "SMA"
+            result := sma_ma5
+        else if type == "HMA"
+            result := hma_ma5
+        else if type == "WMA"
+            result := wma_ma5
+        else if type == "DEMA"
+            result := dema_ma5
+        else if type == "T3"
+            result := t3_ma5
+    
+    result
+
+// Get the MA values using the modified function
+var float out1 = na
+var float out2 = na
+var float out3 = na
+var float out4 = na
+var float out5 = na
+
+// Update MA outputs
+out1 := getMA(maType1, maLength1)
+out2 := getMA(maType2, maLength2)
+out3 := getMA(maType3, maLength3)
+out4 := getMA(maType4, maLength4)
+out5 := getMA(maType5, maLength5)
+
+// MA Conditions - Fixed: Changed from 'const bool' to 'var bool'
+var bool ma1CrossUp2 = false
+var bool ma1CrossDn2 = false
+var bool ma1Con = false
+var bool ma2Con = false
+var bool longema_ordered = false
+var bool shortema_ordered = false
+var bool long_ema_checked = false
+var bool short_ema_checked = false
+var bool long_ema_checked_strict = false
+var bool short_ema_checked_strict = false
+var bool long_ema_checked_cross = false
+var bool short_ema_checked_cross = false
+
+// Update MA conditions on each bar
+ma1CrossUp2 := ta.crossover(out1, out5)
+ma1CrossDn2 := ta.crossunder(out1, out5)
+ma1Con := out1 >= out1[1]
+ma2Con := out5 >= out5[1]
+longema_ordered := close > out5 and out1 > out2 and out2 > out3 and out3 > out4 and out4 > out5
+shortema_ordered := close < out5 and out1 < out2 and out2 < out3 and out3 < out4 and out4 < out5
+long_ema_checked := out1 > out2 and out2 > out5 and out1 > out5
+short_ema_checked := out1 < out2 and out2 < out5 and out1 < out5
+long_ema_checked_strict := out1 > out5
+short_ema_checked_strict := out1 < out5
+long_ema_checked_cross := out1 > out2 and out1[1] < out2[1] and out2 > out5 and out1 > out5
+short_ema_checked_cross := out1 < out2 and out1[1] > out2[1] and out2 < out5 and out1 < out5
+
+// Determine ema_theema conditions
+var bool ema_theema_long = true
+var bool ema_theema_short = true
+
+if useMA == "Close over/under MA5"
+    ema_theema_long := close > out5
+    ema_theema_short := close < out5
+else if useMA == "Strict Close over/under MA5"
+    ema_theema_long := close > out5 and close[1] > out5[1]
+    ema_theema_short := close < out5 and close[1] < out5[1]
+else if useMA == "5 MA (Ordered)"
+    ema_theema_long := longema_ordered
+    ema_theema_short := shortema_ordered
+else if useMA == "3 MA (Ordered)"
+    ema_theema_long := long_ema_checked
+    ema_theema_short := short_ema_checked
+else if useMA == "3 MA (Strict)"
+    ema_theema_long := long_ema_checked_strict
+    ema_theema_short := short_ema_checked_strict
+else if useMA == "3 MA (Cross)"
+    ema_theema_long := long_ema_checked_cross
+    ema_theema_short := short_ema_checked_cross
+else
+    ema_theema_long := true
+    ema_theema_short := true
+
+// Apply MA inversions if requested
+if inverseMA
+    bool temp = ema_theema_long
+    ema_theema_long := not ema_theema_short
+    ema_theema_short := not temp
+
+// HMA bar conditions
+if boolhmabar
+    ema_theema_long := ema_theema_long and close > hma
+    ema_theema_short := ema_theema_short and close < hma
+
+// ----------------------
+// Function to check if a new trade is allowed based on max trades per direction
+// ----------------------
+canTakeNewTrade(bool isLongTrade) =>
+    bool result = true  // Default to allow trades
+    if enableMaxTrades
+        if isLongTrade
+            // Check if we've reached max consecutive long trades
+            result := longTradesCount < maxTradesPerDirection
+        else
+            // Check if we've reached max consecutive short trades
+            result := shortTradesCount < maxTradesPerDirection
+    result
+
+// ----------------------
+// T3 Indicator Calculation
+// ----------------------
+var line t3Line = na
+var float t3Value = na
+
+if useT3
+    // Map t3Source to the appropriate price data
+    float sourcePrice = t3Source == "open" ? open :
+                  t3Source == "high" ? high :
+                  t3Source == "low" ? low :
+                  t3Source == "close" ? close :
+                  t3Source == "hl2" ? hl2 :
+                  t3Source == "hlc3" ? hlc3 :
+                  t3Source == "ohlc4" ? ohlc4 :
+                  t3Source == "hlcc4" ? hlcc4 : close  // Default to close if no match
+    
+    // Use sourcePrice for T3 calculation
+    float xe1 = ta.ema(sourcePrice, t3Length)
+    float xe2 = ta.ema(xe1, t3Length)
+    float xe3 = ta.ema(xe2, t3Length)
+    float xe4 = ta.ema(xe3, t3Length)
+    float xe5 = ta.ema(xe4, t3Length)
+    float xe6 = ta.ema(xe5, t3Length)
+    float b = t3Factor
+    float c1 = -b * b * b
+    float c2 = 3 * b * b + 3 * b * b * b
+    float c3 = -6 * b * b - 3 * b - 3 * b * b * b
+    float c4 = 1 + 3 * b + b * b + 3 * b * b
+    t3Value := c1 * xe6 + c2 * xe5 + c3 * xe4 + c4 * xe3
+    
+else
+    t3Value := na
+
+// ----------------------
+// Trendilio Indicator Calculation
+// ----------------------
+var float pch = na
+var float avpch = na
+//var float avpchSmoothed = 0.0
+var float rms = na
+var float d_avpch = na
+var float smoothed_davpch = 0.0
+var bool osCondition = false
+var bool obCondition = false
+var bool trendEntryLong = false
+var bool trendEntryShort = false
+var bool trendExitLong = false
+var bool trendExitShort = false
+var bool exitOS = false
+var bool exitOB = false
+var bool enterOS = false
+var bool enterOB = false
+var bool momentum_was_positive = false
+var bool momentum_was_negative = false
+var int momentum_cooldown = 0
+
+if useTrendilio
+    // Use custom band length if enabled; otherwise use the default lookbackTrendilio
+    int trendBandLength = customBandLengthTrendilio ? customBandLengthTrendilioValue : lookbackTrendilio
+    
+    // Map TrendilioSource to the appropriate price data
+    float sourcePrice = TrendilioSource == "open" ? open :
+                  TrendilioSource == "high" ? high :
+                  TrendilioSource == "low" ? low :
+                  TrendilioSource == "close" ? close :
+                  TrendilioSource == "hl2" ? hl2 :
+                  TrendilioSource == "hlc3" ? hlc3 :
+                  TrendilioSource == "ohlc4" ? ohlc4 :
+                  TrendilioSource == "hlcc4" ? hlcc4 : close  // Default to close if no match
+    
+    // Use sourcePrice for pch calculation
+    pch := ta.change(sourcePrice, smoothTrending) / sourcePrice * 100
+    avpch := ta.alma(pch, trendBandLength, almaOffsetTrend, almaSigma)
+    
+    // Apply additional smoothing to avpch for more stability
+    avpchSmoothed := 0.7 * avpch + 0.3 * nz(avpchSmoothed[1])
+    
+    rms := bandMultiplier * math.sqrt(math.sum(avpch * avpch, trendBandLength) / trendBandLength)
+    d_avpch := avpch - avpch[1]
+    
+    // Apply smoothing to d_avpch as well
+    smoothed_davpch := 0.6 * d_avpch + 0.4 * nz(smoothed_davpch[1])
+    
+    // Decrement cooldown counter
+    if trendilioSignalCooldownCounter > 0
+        trendilioSignalCooldownCounter := trendilioSignalCooldownCounter - 1
+    
+    // Base conditions with smoother transitions
+    osCondition := useTrendilio and (avpchSmoothed < -rms)      // Oversold zone
+    obCondition := useTrendilio and (avpchSmoothed > rms)       // Overbought zone
+    exitOS := ta.crossover(avpchSmoothed, -rms)            // Exit oversold
+    exitOB := ta.crossunder(avpchSmoothed, rms)            // Exit overbought
+    enterOS := ta.crossunder(avpchSmoothed, -rms)          // Cross into oversold
+    enterOB := ta.crossover(avpchSmoothed, rms)            // Cross into overbought
+    
+    // Initialize trade conditions to false
+    trendEntryLong := false
+    trendEntryShort := false
+    trendExitLong := false
+    trendExitShort := false
+    
+    // Only apply Trendilio logic if the cooldown period is over
+    if trendilioSignalCooldownCounter == 0
+        // Trendilio Trade Type Logic with improved debouncing
+        if trendilioTradeType == "OS/OB"
+            trendEntryLong := osCondition and not lastSignalWasLong
+            trendEntryShort := obCondition and not lastSignalWasShort
+            trendExitLong := exitOS
+            trendExitShort := exitOB
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+        
+        else if trendilioTradeType == "OS/OB enter"
+            trendEntryLong := enterOS and not lastSignalWasLong
+            trendEntryShort := enterOB and not lastSignalWasShort
+            trendExitLong := exitOS
+            trendExitShort := exitOB
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+        
+        else if trendilioTradeType == "OS/OB exit"
+            // Standard behavior - enter on zone, exit on crossover
+            trendEntryLong := osCondition and not lastSignalWasLong
+            trendEntryShort := obCondition and not lastSignalWasShort
+            trendExitLong := exitOS  // Keep this simple - exit only when leaving zone
+            trendExitShort := exitOB // Keep this simple - exit only when leaving zone
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            
+            // Reset state on exits
+            if trendExitLong
+                lastSignalWasLong := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendExitShort
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+        
+        else if trendilioTradeType == "OS/OB reverse"
+            // Use smoothed momentum and momentum state for more stability
+            bool momentum_is_positive = smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0
+            bool momentum_is_negative = smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0
+            
+            trendEntryLong := osCondition and momentum_is_positive and not lastSignalWasLong
+            trendEntryShort := obCondition and momentum_is_negative and not lastSignalWasShort
+            trendExitLong := exitOS or (momentum_is_negative and not momentum_was_negative)
+            trendExitShort := exitOB or (momentum_is_positive and not momentum_was_positive)
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            
+            // Update momentum tracking
+            momentum_was_positive := momentum_is_positive
+            momentum_was_negative := momentum_is_negative
+        
+        else if trendilioTradeType == "OS/OB enter reverse"
+            bool momentum_is_positive = smoothed_davpch > 0 and smoothed_davpch[1] > 0
+            bool momentum_is_negative = smoothed_davpch < 0 and smoothed_davpch[1] < 0
+            
+            trendEntryLong := enterOS and momentum_is_positive and not lastSignalWasLong
+            trendEntryShort := enterOB and momentum_is_negative and not lastSignalWasShort
+            trendExitLong := exitOS or (momentum_is_negative and not momentum_was_negative)
+            trendExitShort := exitOB or (momentum_is_positive and not momentum_was_positive)
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            
+            // Update momentum tracking
+            momentum_was_positive := momentum_is_positive
+            momentum_was_negative := momentum_is_negative
+        
+        else if trendilioTradeType == "OS/OB reverse exit"
+            // Modified behavior to prevent rapid cycling
+            trendEntryLong := osCondition and not exitOS and not lastSignalWasLong  // Only enter if not also exiting
+            trendEntryShort := obCondition and not exitOB and not lastSignalWasShort // Only enter if not also exiting
+        
+            trendExitLong := exitOS or (smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0)
+            trendExitShort := exitOB or (smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0)
+            
+            // Update state tracking
+            if trendEntryLong
+                lastSignalWasLong := true
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendEntryShort
+                lastSignalWasLong := false
+                lastSignalWasShort := true
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            
+            // Reset state on exits
+            if trendExitLong
+                lastSignalWasLong := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+            else if trendExitShort
+                lastSignalWasShort := false
+                trendilioSignalCooldownCounter := trendilioSignalCooldownPeriod
+else
+    pch := 0
+    avpch := 0
+    rms := 0
+    d_avpch := 0
+    osCondition := false
+    obCondition := false
+    trendEntryLong := false
+    trendEntryShort := false
+    trendExitLong := false
+    trendExitShort := false
+    exitOS := false
+    exitOB := false
+    enterOS := false
+    enterOB := false
+
+// ----------------------
+// WAE Indicator Calculation
+// ----------------------
+var line waeExplosionLine = na
+var float e1 = na
+var float t1 = na
+var float e1_prev = na
+var float e1_to_plot = na
+var float t1_to_plot = na
+var float trendUp = na
+var float trendDown = na
+
+if useWAE
+    t1 := (ta.ema(close, fastEMALength) - ta.ema(close, slowEMALength)) * waeSensitivity
+    e1 := bbStdevMultiplier * ta.stdev(t1, bbChannelLength)  // Dynamic threshold
+    trendUp := t1 >= 0 ? t1 : 0
+    trendDown := t1 < 0 ? -t1 : 0
+
+    t1_to_plot := t1
+    
+else
+    e1 := na
+    t1 := na
+    t1_to_plot := na
+    e1_to_plot := na
+    trendUp := 0
+    trendDown := 0
+
+// ----------------------
+// Early Exit Protection Calculation
+// ----------------------
+var float earlyExitMA = na
+float protectionSrc = indicatorSourceProtection == "open" ? open : 
+                     indicatorSourceProtection == "high" ? high : 
+                     indicatorSourceProtection == "low" ? low : 
+                     indicatorSourceProtection == "close" ? close : 
+                     indicatorSourceProtection == "hl2" ? hl2 : 
+                     indicatorSourceProtection == "hlc3" ? hlc3 : 
+                     indicatorSourceProtection == "ohlc3" ? ohlc4 : 
+                     indicatorSourceProtection == "hlcc4" ? (high + low + close + close) / 4 : close
+
+if maProtectionType == "EMA"
+    earlyExitMA := ta.ema(protectionSrc, maProtectionLength)
+else if maProtectionType == "SMA"
+    earlyExitMA := ta.sma(protectionSrc, maProtectionLength)
+else if maProtectionType == "HMA"
+    earlyExitMA := ta.hma(protectionSrc, maProtectionLength)
+else if maProtectionType == "WMA"
+    earlyExitMA := ta.wma(protectionSrc, maProtectionLength)
+else if maProtectionType == "DEMA"
+    float ema1_val = ta.ema(protectionSrc, maProtectionLength)
+    float ema2_val = ta.ema(ema1_val, maProtectionLength)
+    earlyExitMA := 2 * ema1_val - ema2_val
+else if maProtectionType == "VWMA"
+    earlyExitMA := ta.vwma(protectionSrc, maProtectionLength)
+else if maProtectionType == "VWAP"
+    earlyExitMA := ta.vwap(protectionSrc)
+else if maProtectionType == "T3"
+    float vFactor = 0.7
+    float e1_val = ta.ema(protectionSrc, maProtectionLength)
+    float e2_val = ta.ema(e1_val, maProtectionLength)
+    float e3_val = ta.ema(e2_val, maProtectionLength)
+    float e4_val = ta.ema(e3_val, maProtectionLength)
+    float e5_val = ta.ema(e4_val, maProtectionLength)
+    float e6_val = ta.ema(e5_val, maProtectionLength)
+    float c1_val = -vFactor * vFactor * vFactor
+    float c2_val = 3 * vFactor * vFactor + 3 * vFactor * vFactor * vFactor
+    float c3_val = -6 * vFactor * vFactor - 3 * vFactor - 3 * vFactor * vFactor * vFactor
+    float c4_val = 1 + 3 * vFactor + vFactor * vFactor + 3 * vFactor * vFactor
+    earlyExitMA := c1_val * e6_val + c2_val * e5_val + c3_val * e4_val + c4_val * e3_val
+else
+    earlyExitMA := ta.ema(protectionSrc, maProtectionLength)  // Default to EMA
+
+// ----------------------
+// Base Entry and Exit Conditions Implementation
+// ----------------------
+// T3 Conditions
+var bool t3LongCondition = false
+var bool t3ShortCondition = false
+if useT3
+    t3LongCondition := t3Value > t3Value[1]
+    t3ShortCondition := t3Value < t3Value[1]
+else
+    t3LongCondition := true
+    t3ShortCondition := true
+
+// WAE Conditions
+var bool waeLongCondition = false
+var bool waeShortCondition = false
+if useWAE
+    waeLongCondition := useExplosionLine ? t1 > e1 : trendUp > noTradeZoneThreshold
+    waeShortCondition := useExplosionLine ? t1 < -e1 : trendDown > noTradeZoneThreshold
+else
+    waeLongCondition := true
+    waeShortCondition := true
+
+// Final Entry Conditions
+var bool longCondition = false
+var bool shortCondition = false
+
+// Update entry conditions on each bar
+longCondition := (useT3 ? t3LongCondition : true) and 
+                 (useTrendilio ? trendEntryLong : true) and 
+                 (useWAE ? waeLongCondition : true) and 
+                 ema_theema_long and 
+                 TradeDateIsAllowed() and 
+                 TradeDayIsAllowed() and 
+                 LiveTradeIsAllowed() and 
+                 longTrades and 
+                 canTakeNewTrade(true) and 
+                 (bar_index > lastEntryCandle + waitCandlesBetweenEntries or waitCandlesBetweenEntries <= 0)
+
+shortCondition := (useT3 ? t3ShortCondition : true) and 
+                  (useTrendilio ? trendEntryShort : true) and 
+                  (useWAE ? waeShortCondition : true) and 
+                  ema_theema_short and 
+                  TradeDateIsAllowed() and 
+                  TradeDayIsAllowed() and 
+                  LiveTradeIsAllowed() and 
+                  shortTrades and 
+                  canTakeNewTrade(false) and 
+                  (bar_index > lastEntryCandle + waitCandlesBetweenEntries or waitCandlesBetweenEntries <= 0)
+
+// ----------------------
+// Global Filter Variables
+// ----------------------
+var bool rangeFilterCondition = true      // Range Filter
+var bool volumeFlowLongCondition = true   // Volume Flow
+var bool volumeFlowShortCondition = true  
+var bool adxLongCondition = true          // ADX
+var bool adxShortCondition = true         
+var bool tdfiLongCondition = true         // TDFI
+var bool tdfiShortCondition = true        
+var bool flatMarketCondition = true       // Flat Market
+var bool hurstCondition = true            // Hurst
+var bool bullBearLongCondition = true     // Bull Bear Power
+var bool bullBearShortCondition = true    
+var bool vwapLongCondition = true         // VWAP
+var bool vwapShortCondition = true     
+
+// ----------------------
+// Range Filter Implementation
+// ----------------------
+var float rangeLow = na
+var float rangeHigh = na
+
+// Range calculation - recalculated every bar
+rangeFilterCondition := true  // Reset to default
+if useRangeFilter
+    rangeLow := ta.lowest(low, rfPeriod)
+    rangeHigh := ta.highest(high, rfPeriod)
+    float priceRange = (rangeHigh - rangeLow) / rangeLow * 100
+    float avgRange = ta.sma(priceRange, rfPeriod)
+    float rangeThreshold = avgRange * rfMulti
+
+    // Create range filter condition
+    rangeFilterCondition := priceRange > rangeThreshold
+
+// ----------------------
+// Volume Flow Implementation
+// ----------------------
+var float vfi = 0.0
+
+// Reset to default values
+volumeFlowLongCondition := true
+volumeFlowShortCondition := true
+
+if enableVolumeFlow
+    // VFI calculation based on input parameters
+    // Typical price
+    float typ = hlc3
+    
+    // Inter-bar volatility
+    float inter = math.abs(typ - typ[1])
+    
+    // Calculate cutoff based on inter-volatility multiplied by coefficient
+    float cutoff = ta.sma(inter, vfiLength) * coef
+    
+    // Calculate maximum volume cutoff to filter out extreme volume
+    float max_vol = ta.sma(volume, vfiLength) * maxVolCutoff
+    
+    // Calculate price direction
+    float price_delta = typ - typ[1]
+    
+    // Calculate VFI using volatility-adjusted volume
+    vfi := 0.0  // Reset VFI
+    for i = 0 to vfiLength - 1
+        // Skip current bar in the loop
+        if i == 0
+            vfi := vfi
+        else
+            // Get historical values
+            float historic_price_delta = price_delta[i]
+            float historic_inter = inter[i]
+            float historic_cutoff = cutoff[i]
+            float historic_volume = math.min(volume[i], max_vol[i])
+            
+            // Determine direction of volume (positive or negative)
+            float vcp = historic_price_delta > 0 ? 1 : historic_price_delta < 0 ? -1 : 0
+            
+            // Add to vfi if inter-volatility is significant
+            if historic_inter > historic_cutoff
+                vfi := vfi + vcp * historic_volume / historic_inter
+    
+    // Normalize and smooth the VFI
+    vfi := vfi / vfiLength
+    vfi := ta.ema(vfi, 3)  // Additional smoothing
+    
+    // Create volume flow condition
+    volumeFlowLongCondition := vfi > 0
+    volumeFlowShortCondition := vfi < 0
+
+// ----------------------
+// ADX Implementation
+// ----------------------
+var float adxValue = 0.0
+var float plusDI = 0.0
+var float minusDI = 0.0
+
+if enableADX
+    // Standard ADX calculation
+    if adxType == "Normal"
+        // Declare temporary variables directly with destructuring
+        [temp_adx, temp_plus, temp_minus] = ta.dmi(adxSmoothing, adxSmoothing)
+        // Transfer to global variables
+        adxValue := temp_adx
+        plusDI := temp_plus
+        minusDI := temp_minus
+    
+    // Stochastic ADX calculation
+    else if adxType == "Stoch"
+        [standardADX, standardPlusDI, standardMinusDI] = ta.dmi(adxSmoothing, adxSmoothing)
+        adxValue := ta.stoch(standardADX, standardADX, standardADX, maxStochLength)
+        adxValue := ta.sma(adxValue, stochSmoothing)
+        plusDI := standardPlusDI
+        minusDI := standardMinusDI
+    
+    // Masa Nakamura-style ADX
+    else if adxType == "MasaNakamura"
+        float tr = ta.tr(true)
+        float atr = ta.ema(tr, adxSmoothing)
+        float up = high - high[1]
+        float down = low[1] - low
+        float plusDM = up > down and up > 0 ? up : 0
+        float minusDM = down > up and down > 0 ? down : 0
+        plusDI := 100 * ta.ema(plusDM, adxSmoothing) / atr
+        minusDI := 100 * ta.ema(minusDM, adxSmoothing) / atr
+        float dx = math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100
+        adxValue := ta.ema(dx, adxSmoothing)
+    
+    // Apply moving average transformation if selected
+    if adxLineType != "Static"
+        if adxLineType == "MA"
+            adxValue := ta.sma(adxValue, adxMALength)
+        else if adxLineType == "EMA"
+            adxValue := ta.ema(adxValue, adxMALength)
+        else if adxLineType == "SMA"
+            adxValue := ta.sma(adxValue, adxMALength)
+        else if adxLineType == "HMA"
+            adxValue := ta.hma(adxValue, adxMALength)
+        else if adxLineType == "WMA"
+            adxValue := ta.wma(adxValue, adxMALength)
+        else if adxLineType == "DEMA"
+            float e1_adx = ta.ema(adxValue, adxMALength)
+            float e2_adx = ta.ema(e1_adx, adxMALength)
+            adxValue := 2 * e1_adx - e2_adx
+        else if adxLineType == "VWMA"
+            adxValue := ta.vwma(adxValue, adxMALength)
+        else if adxLineType == "T3"
+            float vFactor_adx = 0.7
+            float e1_adx_t3 = ta.ema(adxValue, adxMALength)
+            float e2_adx_t3 = ta.ema(e1_adx_t3, adxMALength)
+            float e3_adx_t3 = ta.ema(e2_adx_t3, adxMALength)
+            float e4_adx_t3 = ta.ema(e3_adx_t3, adxMALength)
+            float e5_adx_t3 = ta.ema(e4_adx_t3, adxMALength)
+            float e6_adx_t3 = ta.ema(e5_adx_t3, adxMALength)
+            float c1_adx = -vFactor_adx * vFactor_adx * vFactor_adx
+            float c2_adx = 3 * vFactor_adx * vFactor_adx + 3 * vFactor_adx * vFactor_adx * vFactor_adx
+            float c3_adx = -6 * vFactor_adx * vFactor_adx - 3 * vFactor_adx - 3 * vFactor_adx * vFactor_adx * vFactor_adx
+            float c4_adx = 1 + 3 * vFactor_adx + vFactor_adx * vFactor_adx + 3 * vFactor_adx * vFactor_adx
+            adxValue := c1_adx * e6_adx_t3 + c2_adx * e5_adx_t3 + c3_adx * e4_adx_t3 + c4_adx * e3_adx_t3
+    
+    // Rate of change logic for ADX if enabled
+    var float adxAboveLineValue = 0.0
+    if useRateOfChange
+        float adxRateOfChange = adxValue - adxValue[3]
+        float adxAboveLineAdaptive = adxRateOfChange > 0 ? adxAboveLine * 0.9 : adxAboveLine * 1.1
+        adxAboveLineValue := inverseAdaptive ? adxAboveLineAdaptive : adxAboveLine
+    else
+        adxAboveLineValue := adxAboveLine
+    
+    // Create ADX conditions
+    bool adxStrengthCondition = adxValue > adxAboveLineValue
+    
+    // Apply directional indicators if enabled
+    if useDI
+        bool diLongCondition = plusDI > minusDI
+        bool diShortCondition = minusDI > plusDI
+        adxLongCondition := adxStrengthCondition and diLongCondition
+        adxShortCondition := adxStrengthCondition and diShortCondition
+    else
+        adxLongCondition := adxStrengthCondition
+        adxShortCondition := adxStrengthCondition
+
+// ----------------------
+// TDFI (Trend Direction Force Index) Implementation
+// ----------------------
+var float tdfi = 0.0
+
+// Reset to default values
+tdfiLongCondition := true
+tdfiShortCondition := true
+
+// Define helper functions for TDFI v2 at script level
+getMMA(src, len, mode) =>
+    float result = ta.ema(src, len)  // Default
+    if mode == "ema"
+        result := ta.ema(src, len)
+    else if mode == "wma"
+        result := ta.wma(src, len)
+    else if mode == "swma"
+        result := ta.swma(src)
+    else if mode == "vwma"
+        result := ta.vwma(src, len)
+    else if mode == "hull"
+        result := ta.hma(src, len)
+    else if mode == "tema"
+        float e1_tema = ta.ema(src, len)
+        float e2_tema = ta.ema(e1_tema, len)
+        float e3_tema = ta.ema(e2_tema, len)
+        result := 3 * (e1_tema - e2_tema) + e3_tema
+    result
+
+getSMMA(src, len, mode) =>
+    float result = ta.ema(src, len)  // Default
+    if mode == "ema"
+        result := ta.ema(src, len)
+    else if mode == "wma"
+        result := ta.wma(src, len)
+    else if mode == "swma"
+        result := ta.swma(src)
+    else if mode == "vwma"
+        result := ta.vwma(src, len)
+    else if mode == "hull"
+        result := ta.hma(src, len)
+    else if mode == "tema"
+        float e1_tdfi = ta.ema(src, len)
+        float e2_tdfi = ta.ema(e1_tdfi, len)
+        float e3_tdfi = ta.ema(e2_tdfi, len)
+        result := 3 * (e1_tdfi - e2_tdfi) + e3_tdfi
+    result
+
+// TDFI Logic
+if enableTDFI
+    // TDFI Version 1 - Basic implementation
+    if tdfiVersion == "v1"
+        float price_diff = close - close[1]
+        float raw_force = price_diff * volume
+        tdfi := ta.ema(raw_force, 13) / ta.ema(volume, 13) / close * 100
+    
+    // TDFI Version 2 - Enhanced implementation
+    else if tdfiVersion == "v2"
+        float priceChange = close - close[nLengthV2]
+        float volumeF = volume / ta.sma(volume, 100)
+        float raw_force_v2 = priceChange * volumeF
+        float mma_raw_force = getMMA(raw_force_v2, mmaLengthV2, mmaModeV2)
+        float normalized_force = mma_raw_force / close * 100
+        tdfi := getSMMA(normalized_force, mmaLengthV2, smmaModeV2)
+    
+    // Create TDFI conditions
+    tdfiLongCondition := tdfi > tdfiHigh
+    tdfiShortCondition := tdfi < tdfiLow
+
+// ----------------------
+// Flat Market Implementation
+// ----------------------
+var float flatMarketValue = 0.0
+var float flatMarketRoC = 0.0
+
+// Function to get the Moving Average for flat market detection
+getMAflat(source, maType, length) =>
+    float result = switch 
+        maType == "MA" or maType == "SMA" => ta.sma(source, length)
+        maType == "EMA" => ta.ema(source, length)
+        maType == "HMA" => ta.hma(source, length)
+        maType == "WMA" => ta.wma(source, length)
+        maType == "DEMA" => 
+            float ema1 = ta.ema(source, length)
+            float ema2 = ta.ema(ema1, length)
+            2 * ema1 - ema2
+        maType == "VWMA" => ta.vwma(source, length)
+        maType == "T3" => 
+            float factor = 0.7
+            float t3_e1 = ta.ema(source, length)
+            float t3_e2 = ta.ema(t3_e1, length)
+            float t3_e3 = ta.ema(t3_e2, length)
+            float t3_e4 = ta.ema(t3_e3, length)
+            float t3_e5 = ta.ema(t3_e4, length)
+            float t3_e6 = ta.ema(t3_e5, length)
+            float c1 = -factor * factor * factor
+            float c2 = 3 * factor * factor + 3 * factor * factor * factor
+            float c3 = -6 * factor * factor - 3 * factor - 3 * factor * factor * factor
+            float c4 = 1 + 3 * factor + factor * factor + 3 * factor * factor
+            c1 * t3_e6 + c2 * t3_e5 + c3 * t3_e4 + c4 * t3_e3
+        => source
+
+    result
+
+// Function to calculate Rate of Change
+getROC(source, length) =>
+    (source / source[length] - 1) * 100
+
+// Calculate Flat Market condition
+if enableFlatMarket
+    // Get price volatility (using HLC3 as default source)
+    float choppy = ta.atr(1) / ta.atr(maLengthFlatMarket) * 100
+    
+    // Calculate and apply moving average if not using "Static" type
+    float choppyline = choppy
+    choppyline := maTypeFlatMarket != "Static" ? getMAflat(choppy, maTypeFlatMarket, maLengthFlatMarket) : choppy
+    
+    // Check if the market is flat or not
+    flatMarketCondition := if useRateOfChangeFlat
+        // With Rate of Change - market is tradable (not flat) when:
+        // 1. For long trades: RoC is positive and choppyline is above threshold
+        // 2. For short trades: RoC is negative and choppyline is above threshold
+        float roc = getROC(choppy, 9)
+        bool notFlatForLong = roc > 0 and choppyline > flatMarketAboveLine
+        bool notFlatForShort = roc < 0 and choppyline > flatMarketAboveLine
+        
+        notFlatForLong or notFlatForShort
+    else
+        // Without Rate of Change - market is tradable (not flat) when:
+        // Volatility is above the threshold
+        choppyline > flatMarketAboveLine
+
+// ----------------------
+// Hurst Exponent Implementation
+// ----------------------
+var float hurstExponent = 0.5  // Default to 0.5 (random walk)
+var float rs = 1.0  // Default safe value
+
+// Reset to default value
+hurstCondition := true
+
+if enableHurst
+    // Calculate Hurst Exponent
+    // Using rescaled range method
+    
+    // Step 1: Calculate returns
+    float returns = close / close[1] - 1
+    
+    // Step 2: Calculate cumulative deviation from mean
+    float meanReturn = ta.cum(returns) / hurstExpLength
+    float deviation = returns - meanReturn
+    float cumDeviation = ta.cum(deviation)
+    
+    // Step 3: Calculate range and standard deviation
+    float maxCumDev = ta.highest(cumDeviation, hurstExpLength)
+    float minCumDev = ta.lowest(cumDeviation, hurstExpLength)
+    float rangeRS = maxCumDev - minCumDev
+    
+    float stdev = math.sqrt(ta.cum(math.pow(returns - meanReturn, 2)) / hurstExpLength)
+    
+    // Step 4: Calculate R/S statistic
+    if stdev != 0
+        rs := rangeRS / stdev
+    else
+        rs := 1
+    
+    // Step 5: Estimate Hurst exponent (approximation)
+    // H = log(R/S) / log(N) where N is the time period
+    if rs > 0
+        hurstExponent := math.log(rs) / math.log(hurstExpLength)
+    
+    // Create Hurst condition based on market type
+    if hurstType == "Trending Market"
+        // Trending market: H > 0.5
+        hurstCondition := hurstExponent > 0.5
+    else if hurstType == "Consolidation"
+        // Consolidation: H < 0.5
+        hurstCondition := hurstExponent < 0.5
+    else  // "Random Walk"
+        // Random walk: H ≈ 0.5
+        hurstCondition := hurstExponent >= 0.4 and hurstExponent <= 0.6
+
+// ----------------------
+// Bull Bear Power Implementation
+// ----------------------
+var float bullPower = 0.0
+var float bearPower = 0.0
+
+// Reset to default values
+bullBearLongCondition := true
+bullBearShortCondition := true
+
+if enableBullBear
+    // Calculate EMA for bull/bear power basis
+    float ema = ta.ema(close, bbpLength)
+    
+    // Calculate Bull Power and Bear Power
+    bullPower := high - ema
+    bearPower := low - ema
+    
+    // Create conditions for bull and bear power
+    bool bullPowerCondition = bullPower > 0 and bullPower > bullPower[1]
+    bool bearPowerCondition = bearPower < 0 and bearPower < bearPower[1]
+    
+    // Apply to strategy signals
+    bullBearLongCondition := bullPowerCondition and bearPower > bearPower[1]  // Bull strong & bear weakening
+    bullBearShortCondition := bearPowerCondition and bullPower < bullPower[1]  // Bear strong & bull weakening
+
+// ----------------------
+// VWAP Crossover Implementation
+// ----------------------
+// Initialize VWAP variables
+var float valslow = 0.0
+var float sma_close = 0.0
+
+// Reset conditions at beginning of each bar
+vwapLongCondition := true
+vwapShortCondition := true
+
+// Calculate VWAP filter conditions
+if useVWAPEMA
+    // Get price sources
+    float vwapSrc = getSourcePrice(vwapSource)
+    float vwap2Src = getSourcePrice(vwap2Source)
+    
+    // Calculate VWAP and SMA
+    valslow := ta.vwap(vwapSrc)  // Using built-in vwap for better performance
+    sma_close := ta.ema(vwap2Src, vwapLength)  // Using EMA instead of SMA for better responsiveness
+    
+    // Set VWAP conditions based on previous bar's values
+    vwapLongCondition := valslow[1] < sma_close[1]
+    vwapShortCondition := valslow[1] > sma_close[1]
+
+// ----------------------
+// Filter Conditions Combination
+// ----------------------
+// Reset filters each bar
+var bool filterLongCondition = true
+var bool filterShortCondition = true
+
+// Reset to default values at the beginning of each bar
+filterLongCondition := true
+filterShortCondition := true
+
+// Range Filter
+if useRangeFilter
+    filterLongCondition := filterLongCondition and rangeFilterCondition
+    filterShortCondition := filterShortCondition and rangeFilterCondition
+
+// Volume Flow Filter
+if enableVolumeFlow
+    filterLongCondition := filterLongCondition and volumeFlowLongCondition
+    filterShortCondition := filterShortCondition and volumeFlowShortCondition
+
+// ADX Filter
+if enableADX
+    filterLongCondition := filterLongCondition and adxLongCondition
+    filterShortCondition := filterShortCondition and adxShortCondition
+
+// TDFI Filter
+if enableTDFI
+    filterLongCondition := filterLongCondition and tdfiLongCondition
+    filterShortCondition := filterShortCondition and tdfiShortCondition
+
+// Flat Market Filter
+if enableFlatMarket
+    filterLongCondition := filterLongCondition and flatMarketCondition
+    filterShortCondition := filterShortCondition and flatMarketCondition
+
+// Hurst Exponent Filter
+if enableHurst
+    filterLongCondition := filterLongCondition and hurstCondition
+    filterShortCondition := filterShortCondition and hurstCondition
+
+// Bull Bear Power Filter
+if enableBullBear
+    filterLongCondition := filterLongCondition and bullBearLongCondition
+    filterShortCondition := filterShortCondition and bullBearShortCondition
+
+// VWAP Crossover Filter
+if useVWAPEMA
+    filterLongCondition := filterLongCondition and vwapLongCondition
+    filterShortCondition := filterShortCondition and vwapShortCondition
+
+// Update base conditions with filters
+longCondition := longCondition and filterLongCondition
+shortCondition := shortCondition and filterShortCondition
+
+// ----------------------
+// Entry Logic with Pre-Entry Checks
+// ----------------------
+if bar_index > lastEntryBarIndex
+    waitForNewBarEntry := false
+
+// Reset waitForNewBarExit at the beginning of each new bar
+if bar_index > lastExitBarIndex
+    waitForNewBarExit := false
+
+// Check for end of session exits
+if useSessions and isEndOfSession() and tradeActive
+    // Apply bar confirmation check here too
+    bool canCloseOnSessionEnd = waitForBarConfirmation ? barstate.isconfirmed : true
+    
+    if canCloseOnSessionEnd
+        if isLong and strategy.position_size > 0
+            strategy.close("Long", comment="End of Session")
+            tradeActive := false
+            lastExitBarIndex := bar_index
+            waitForNewBarExit := true
+            currentPosition := "flat"
+        else if not isLong and strategy.position_size < 0
+            strategy.close("Short", comment="End of Session")
+            tradeActive := false
+            lastExitBarIndex := bar_index
+            waitForNewBarExit := true
+            currentPosition := "flat"
+
+// Bar confirmation logic - only proceed with signal execution if this condition is met
+bool canExecuteSignal = waitForBarConfirmation ? barstate.isconfirmed : true
+
+// REVERSAL MODE - Check if we need to perform a reversal (regardless of position size)
+// This ensures we check for reversal signals on every bar when reversal mode is enabled
+if reversalMode and canExecuteSignal and not waitForNewBarEntry
+    // Check for long signal while in short position
+    if longTrades and longCondition and strategy.position_size < 0
+        // Cancel any pending orders first
+        strategy.cancel_all()
+        
+        // Close the existing short position
+        strategy.close("Short", comment="Reversal to Long")
+        
+        // Open a new long position
+        strategy.entry("Long", strategy.long, qty=roundedQty)
+        lastEntryCandle := bar_index
+        lastEntryBarIndex := bar_index
+        waitForNewBarEntry := true
+        tradeActive := true
+        isLong := true
+        entryPrice := close
+        entrySL := slLong
+        entryTP := tpLong
+        currentPosition := "long"
+        
+        // Update trade counters
+        longTradesCount := 1
+        shortTradesCount := 0
+        lastTradeDirection := 1
+        
+        // Set up exit conditions
+        if useMultiTP
+            // Configure TP levels for long position
+            tp1Price := tp1Long
+            tp2Price := tp2Long
+            tp3Price := tp3Long
+            tp1Reached := false
+            tp2Reached := false
+            tp3Reached := false
+        else if not stopLossDisabled
+            if takeProfitType != "None"
+                strategy.exit("Exit Long", "Long", stop=entrySL, limit=entryTP)
+            else
+                strategy.exit("SL Long", "Long", stop=entrySL)
+    
+    // Check for short signal while in long position
+    else if shortTrades and shortCondition and strategy.position_size > 0
+        // Cancel any pending orders first
+        strategy.cancel_all()
+        
+        // Close the existing long position
+        strategy.close("Long", comment="Reversal to Short")
+        
+        // Open a new short position
+        strategy.entry("Short", strategy.short, qty=roundedQty)
+        lastEntryCandle := bar_index
+        lastEntryBarIndex := bar_index
+        waitForNewBarEntry := true
+        tradeActive := true
+        isLong := false
+        entryPrice := close
+        entrySL := slShort
+        entryTP := tpShort
+        currentPosition := "short"
+        
+        // Update trade counters
+        shortTradesCount := 1
+        longTradesCount := 0
+        lastTradeDirection := -1
+        
+        // Set up exit conditions
+        if useMultiTP
+            // Configure TP levels for short position
+            tp1Price := tp1Short
+            tp2Price := tp2Short
+            tp3Price := tp3Short
+            tp1Reached := false
+            tp2Reached := false
+            tp3Reached := false
+        else if not stopLossDisabled
+            if takeProfitType != "None"
+                strategy.exit("Exit Short", "Short", stop=entrySL, limit=entryTP)
+            else
+                strategy.exit("SL Short", "Short", stop=entrySL)
+
+// Normal entry logic (for new positions)
+if strategy.position_size == 0 and not waitForNewBarEntry
+
+    // Add session validation
+    bool validSessionEntry = not useSessions or isInTradingSession()
+
+    // Add this to your existing validations
+    validEntry := validEntry and validSessionEntry
+
+    // Add Trendilio protection to prevent entry right after exit
+    bool validTrendilioEntry = true
+    if useTrendilio and (trendilioTradeType == "OS/OB reverse" or trendilioTradeType == "OS/OB enter reverse" or trendilioTradeType == "OS/OB reverse exit")
+        // Prevent entry on the same bar as previous exit
+        validTrendilioEntry := bar_index > lastTrendilioExitBar
+    
+    // Add this check to your existing validEntry checks
+    validEntry := validEntry and validTrendilioEntry
+    
+    // Pre-calculate potential SL and TP for validation
+    if longTrades and longCondition
+        // Check for leverage risk
+        if i_leverageBlock
+            validLongEntry := slLong > firstLeverageLongAverage
+        
+        // Check for minimum TP threshold
+        if activateMinTP
+            float tpPct = math.abs(tpLong - close) / close * 100
+            if tpPct < minTPThreshold
+                if minTPAction == "Use Percentage Instead"
+                    // Update TP to use minimum percentage instead
+                    tpLong := close * (1 + minTPThreshold / 100)
+                    validLongEntry := true
+                else
+                    validLongEntry := false
+                    
+        // Check for maximum SL threshold
+        if activateMaxSL
+            float slPct = math.abs(close - slLong) / close * 100
+            if slPct > maxSLThreshold
+                if maxSLAction == "Use Percentage Instead"
+                    // Update SL to use maximum percentage
+                    slLong := close * (1 - maxSLThreshold / 100)
+                    validLongEntry := true
+                else
+                    validLongEntry := false
+                    
+    else if shortTrades and shortCondition
+        // Check for leverage risk
+        if i_leverageBlock
+            validShortEntry := slShort < firstLeverageShortAverage
+        
+        // Check for minimum TP threshold
+        if activateMinTP
+            float tpPct = math.abs(close - tpShort) / close * 100
+            if tpPct < minTPThreshold
+                if minTPAction == "Use Percentage Instead"
+                    // Update TP to use minimum percentage instead
+                    tpShort := close * (1 - minTPThreshold / 100)
+                    validShortEntry := true
+                else
+                    validShortEntry := false
+                    
+        // Check for maximum SL threshold
+        if activateMaxSL
+            float slPct = math.abs(slShort - close) / close * 100
+            if slPct > maxSLThreshold
+                if maxSLAction == "Use Percentage Instead"
+                    // Update SL to use maximum percentage
+                    slShort := close * (1 + maxSLThreshold / 100)
+                    validShortEntry := true
+                else
+                    validShortEntry := false
+    
+    // Final validation and entry execution (for new positions)
+    if validEntry and canExecuteSignal
+        // Long entry when we're flat
+        if longTrades and longCondition and validLongEntry and roundedQty > 0
+            strategy.entry("Long", strategy.long, qty=roundedQty)
+            lastEntryCandle := bar_index
+            lastEntryBarIndex := bar_index
+            waitForNewBarEntry := true
+            tradeActive := true
+            isLong := true
+            entryPrice := close
+            entrySL := slLong
+            entryTP := tpLong
+            currentPosition := "long"
+            
+            // Update trade counters
+            if lastTradeDirection == 1
+                // Another long trade - increment count
+                longTradesCount := longTradesCount + 1
+            else
+                // Direction change or first trade - reset counter
+                longTradesCount := 1
+                shortTradesCount := 0
+            
+            lastTradeDirection := 1
+        
+            if useMultiTP
+                // Use pre-calculated TP levels
+                tp1Price := tp1Long
+                tp2Price := tp2Long
+                tp3Price := tp3Long
+    
+                tp1Reached := false
+                tp2Reached := false
+                tp3Reached := false
+            else
+                // For regular exit with TP/SL
+                if stopLossType == "None"
+                    stopLossDisabled := true
+                    if takeProfitType != "None"
+                        // Only use take profit
+                        strategy.exit("TP Long", "Long", limit=tpLong)
+                else
+                    stopLossDisabled := false
+                    // Use both SL and TP
+                    if not stopLossDisabled
+                        if takeProfitType != "None"
+                            strategy.exit("Exit Long", "Long", stop=entrySL, limit=entryTP)
+                        else
+                            strategy.exit("SL Long", "Long", stop=entrySL)
+            
+        // Short entry when we're flat
+        else if shortTrades and shortCondition and validShortEntry and roundedQty > 0
+            strategy.entry("Short", strategy.short, qty=roundedQty)
+            lastEntryCandle := bar_index
+            lastEntryBarIndex := bar_index
+            waitForNewBarEntry := true
+            tradeActive := true
+            isLong := false
+            entryPrice := close
+            entrySL := slShort
+            entryTP := tpShort
+            currentPosition := "short"
+            
+            // Update trade counters
+            if lastTradeDirection == -1
+                // Another short trade - increment count
+                shortTradesCount := shortTradesCount + 1
+            else
+                // Direction change or first trade - reset counter
+                shortTradesCount := 1
+                longTradesCount := 0
+            
+            lastTradeDirection := -1
+        
+            if useMultiTP
+                // Use pre-calculated TP levels
+                tp1Price := tp1Short
+                tp2Price := tp2Short
+                tp3Price := tp3Short
+    
+                tp1Reached := false
+                tp2Reached := false
+                tp3Reached := false
+            else
+                // For regular exit with TP/SL
+                if stopLossType == "None"
+                    stopLossDisabled := true
+                    if takeProfitType != "None"
+                        // Only use take profit
+                        strategy.exit("TP Short", "Short", limit=tpShort)
+                else
+                    stopLossDisabled := false
+                    // Use both SL and TP
+                    if not stopLossDisabled
+                        if takeProfitType != "None"
+                            strategy.exit("Exit Short", "Short", stop=entrySL, limit=entryTP)
+                        else
+                            strategy.exit("SL Short", "Short", stop=entrySL)
+    else
+        strategy.cancel("Long")
+        strategy.cancel("Short")
+
+// ----------------------
+// Exit Logic (Immediate)
+// ----------------------
+if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
+    // Apply bar confirmation check to exits
+    bool canExitSignal = waitForBarConfirmation ? barstate.isconfirmed : true
+    
+    if canExitSignal
+        // Only check for normal exits if we're not in reversal mode or there's no reversal signal
+        bool skipNormalExits = false
+        if reversalMode
+            if isLong and strategy.position_size > 0 and shortCondition
+                skipNormalExits := true  // Skip normal exits, let the reversal logic handle it
+            else if not isLong and strategy.position_size < 0 and longCondition
+                skipNormalExits := true  // Skip normal exits, let the reversal logic handle it
+        
+        if not skipNormalExits
+            // Force exit logic
+            if force_exit
+                if isLong and strategy.position_size > 0 and not longCondition
+                    strategy.close("Long", comment="Forced Exit Long", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+                else if not isLong and strategy.position_size < 0 and not shortCondition
+                    strategy.close("Short", comment="Forced Exit Short", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+            
+            // Normal SL/TP exits
+            if strategy.position_size > 0
+                if not stopLossDisabled and not na(entrySL) and low <= entrySL and bar_index != lastExitBarIndex
+                    strategy.close("Long", comment="Stop Loss", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+                else if takeProfitType != "None" and not na(entryTP) and high >= entryTP and close > entryPrice and bar_index != lastExitBarIndex
+                    strategy.close("Long", comment="Take Profit", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+            else if strategy.position_size < 0
+                if not stopLossDisabled and not na(entrySL) and high >= entrySL and bar_index != lastExitBarIndex
+                    strategy.close("Short", comment="Stop Loss", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+                else if takeProfitType != "None" and not na(entryTP) and low <= entryTP and close < entryPrice and bar_index != lastExitBarIndex
+                    strategy.close("Short", comment="Take Profit", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+
+// ----------------------
+// Early Exit Protection Check
+// ----------------------
+if earlyExitProtection and tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
+    // Apply bar confirmation check to early exits
+    bool canExitEarly = waitForBarConfirmation ? barstate.isconfirmed : true
+    
+    // Skip early exits if we're in reversal mode with opposite signal
+    bool skipEarlyExits = false
+    if reversalMode
+        if isLong and strategy.position_size > 0 and shortCondition
+            skipEarlyExits := true  // Skip early exits, let the reversal logic handle it
+        else if not isLong and strategy.position_size < 0 and longCondition
+            skipEarlyExits := true  // Skip early exits, let the reversal logic handle it
+    
+    if canExitEarly and not skipEarlyExits and not stopLossDisabled  // Only apply if SL is active
+        if isLong and strategy.position_size > 0 and close < earlyExitMA and bar_index != lastExitBarIndex
+            strategy.close("Long", comment="Early Exit Protection", immediately=false)
+            tradeActive := false
+            lastTrendilioExitBar := bar_index
+            lastExitBarIndex := bar_index
+            waitForNewBarExit := true
+            currentPosition := "flat"
+        else if not isLong and strategy.position_size < 0 and close > earlyExitMA and bar_index != lastExitBarIndex
+            strategy.close("Short", comment="Early Exit Protection", immediately=false)
+            tradeActive := false
+            lastTrendilioExitBar := bar_index
+            lastExitBarIndex := bar_index
+            waitForNewBarExit := true
+            currentPosition := "flat"
+
+// ----------------------
+// Multi Take Profit Execution Logic
+// ----------------------
+if useMultiTP and tradeActive and bar_index > lastEntryCandle
+    // Apply bar confirmation check to multi-TPs
+    bool canTriggerTP = waitForBarConfirmation ? barstate.isconfirmed : true
+    
+    // Skip take profits if we're in reversal mode with opposite signal
+    bool skipTP = false
+    if reversalMode
+        if isLong and strategy.position_size > 0 and shortCondition
+            skipTP := true  // Skip take profits, let the reversal logic handle it
+        else if not isLong and strategy.position_size < 0 and longCondition
+            skipTP := true  // Skip take profits, let the reversal logic handle it
+    
+    if canTriggerTP and not skipTP
+        if isLong and strategy.position_size > 0
+            // Ensure we don't process multiple TPs in the same bar
+            if tp1Enabled and not tp1Reached and high >= tp1Price and bar_index != lastExitBarIndex
+                float closeAmount = roundedQty * (tp1Percent / 100)
+                closeAmount := f_round_qty(closeAmount)
+                closeAmount := math.max(closeAmount, 0.01)
+                if closeAmount > 0
+                    strategy.order("TP1 Hit", strategy.short, qty=closeAmount)
+                    tp1Reached := true
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+            
+            if tp2Enabled and not tp2Reached and high >= tp2Price and bar_index != lastExitBarIndex
+                float closeAmount = roundedQty * (tp2Percent / 100)
+                closeAmount := f_round_qty(closeAmount)
+                closeAmount := math.max(closeAmount, 0.01)
+                if closeAmount > 0
+                    strategy.order("TP2 Hit", strategy.short, qty=closeAmount)
+                    tp2Reached := true
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+            
+            if not tp3Reached and high >= tp3Price and bar_index != lastExitBarIndex
+                strategy.close("Long", comment="TP3 Hit")
+                tp3Reached := true
+                tradeActive := false
+                lastTrendilioExitBar := bar_index
+                lastExitBarIndex := bar_index
+                waitForNewBarExit := true
+                currentPosition := "flat"
+        
+        else if not isLong and strategy.position_size < 0
+            // Ensure we don't process multiple TPs in the same bar
+            if tp1Enabled and not tp1Reached and low <= tp1Price and bar_index != lastExitBarIndex
+                float closeAmount = roundedQty * (tp1Percent / 100)
+                closeAmount := f_round_qty(closeAmount)
+                closeAmount := math.max(closeAmount, 0.01)
+                if closeAmount > 0
+                    strategy.order("TP1 Hit", strategy.long, qty=closeAmount)
+                    tp1Reached := true
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+            
+            if tp2Enabled and not tp2Reached and low <= tp2Price and bar_index != lastExitBarIndex
+                float closeAmount = roundedQty * (tp2Percent / 100)
+                closeAmount := f_round_qty(closeAmount)
+                closeAmount := math.max(closeAmount, 0.01)
+                if closeAmount > 0
+                    strategy.order("TP2 Hit", strategy.long, qty=closeAmount)
+                    tp2Reached := true
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+            
+            if not tp3Reached and low <= tp3Price and bar_index != lastExitBarIndex
+                strategy.close("Short", comment="TP3 Hit")
+                tp3Reached := true
+                tradeActive := false
+                lastTrendilioExitBar := bar_index
+                lastExitBarIndex := bar_index
+                waitForNewBarExit := true
+                currentPosition := "flat"
+                
+// ----------------------
+// Improved Trendilio-Specific Exits
+// ----------------------
+if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and useTrendilio
+    // Apply bar confirmation check to Trendilio exits
+    bool canExitTrendilio = waitForBarConfirmation ? barstate.isconfirmed : true
+    
+    // Skip Trendilio exits if we're in reversal mode with opposite signal
+    bool skipTrendilioExit = false
+    if reversalMode
+        if isLong and strategy.position_size > 0 and shortCondition
+            skipTrendilioExit := true  // Skip Trendilio exits, let the reversal logic handle it
+        else if not isLong and strategy.position_size < 0 and longCondition
+            skipTrendilioExit := true  // Skip Trendilio exits, let the reversal logic handle it
+    
+    if canExitTrendilio and not skipTrendilioExit
+        if trendilioTradeType == "OS/OB exit"
+            if isLong and strategy.position_size > 0 and exitOS and bar_index != lastExitBarIndex
+                strategy.close("Long", comment="Trendilio Exit Mode", immediately=false)
+                tradeActive := false
+                lastTrendilioExitBar := bar_index
+                lastExitBarIndex := bar_index
+                waitForNewBarExit := true
+                currentPosition := "flat"
+            else if not isLong and strategy.position_size < 0 and exitOB and bar_index != lastExitBarIndex
+                strategy.close("Short", comment="Trendilio Exit Mode", immediately=false)
+                tradeActive := false
+                lastTrendilioExitBar := bar_index
+                lastExitBarIndex := bar_index
+                waitForNewBarExit := true
+                currentPosition := "flat"
+        else if trendilioTradeType == "OS/OB reverse exit"
+            if isLong and strategy.position_size > 0 and bar_index != lastExitBarIndex
+                if exitOS or (smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0)
+                    strategy.close("Long", comment="Trendilio Reverse Exit Mode", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+            else if not isLong and strategy.position_size < 0 and bar_index != lastExitBarIndex
+                if exitOB or (smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0)
+                    strategy.close("Short", comment="Trendilio Reverse Exit Mode", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+        else if trendilioTradeType == "OS/OB reverse"
+            if isLong and strategy.position_size > 0 and bar_index != lastExitBarIndex
+                if exitOS or (smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0)
+                    strategy.close("Long", comment="Trendilio Reverse Mode", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+            else if not isLong and strategy.position_size < 0 and bar_index != lastExitBarIndex
+                if exitOB or (smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0)
+                    strategy.close("Short", comment="Trendilio Reverse Mode", immediately=false)
+                    tradeActive := false
+                    lastTrendilioExitBar := bar_index
+                    lastExitBarIndex := bar_index
+                    waitForNewBarExit := true
+                    currentPosition := "flat"
+
+// ------------------------------------------------
+// 34) Global Alert Settings
+// ------------------------------------------------
+var g_alerts_global = "🔔Global Alert Settings🔔"
+alertFrequency = input.string("Once per bar", "Alert Frequency", options=["Once per bar","Once per close","All"], group=g_alerts_global, tooltip="Set how often alerts are triggered:once per bar, once per bar close, or for every condition change.")
+useImmediateAlerts = input.bool(true, "Immediate Alert Trigger?", group=g_alerts_global, tooltip="Enable alerts to trigger instantly when conditions are met, improving real-time trade execution.")
+alertMode = input.string("Order fills only", "Alert Mode", options=["Order fills and alert() function calls","Order fills only","alert() function calls only"], group=g_alerts_global, tooltip="Control which events generate alerts: both order fills and alert() calls, only order fills, or only alert() function calls.")
+
+// ------------------------------------------------
+// 35) Detailed Alert Messages
+// ------------------------------------------------
+var g_alert_messages = "🔔Detailed Alert Messages🔔"
+i_alert_txt_entry_long = input.text_area("", "Long Entry Alert", group=g_alert_messages, tooltip="Custom message for long entry alerts")
+i_alert_txt_entry_short = input.text_area("", "Short Entry Alert", group=g_alert_messages, tooltip="Custom message for short entry alerts")
+i_alert_txt_exit_long = input.text_area("", "Long Exit Alert", group=g_alert_messages, tooltip="Custom message for long exit alerts")
+i_alert_txt_exit_short = input.text_area("", "Short Exit Alert", group=g_alert_messages, tooltip="Custom message for short exit alerts")
+
+// ------------------------------------------------
+// 36) Multi-Target Alert Templates
+// ------------------------------------------------
+var g_alerts_multi_tp = "🔔Multi-Target Alert Templates🔔"
+i_alert_txt_tp1_long  = input.text_area("", "Long TP1 Alert (33%)", group=g_alerts_multi_tp, tooltip="Custom message for first take profit on long positions")
+i_alert_txt_tp2_long  = input.text_area("", "Long TP2 Alert (66%)", group=g_alerts_multi_tp, tooltip="Custom message for second take profit on long positions")
+i_alert_txt_tp3_long  = input.text_area("", "Long TP3 Alert (All)", group=g_alerts_multi_tp, tooltip="Custom message for third take profit on long positions")
+i_alert_txt_tp1_short = input.text_area("", "Short TP1 Alert (33%)", group=g_alerts_multi_tp, tooltip="Custom message for first take profit on short positions")
+i_alert_txt_tp2_short = input.text_area("", "Short TP2 Alert (66%)", group=g_alerts_multi_tp, tooltip="Custom message for second take profit on short positions")
+i_alert_txt_tp3_short = input.text_area("", "Short TP3 Alert (All)", group=g_alerts_multi_tp, tooltip="Custom message for third take profit on short positions")
+
+// ----------------------
+// Alert Variables and Helpers
+// ----------------------
+// Variables to track if we should allow order fill alerts and function call alerts
+var bool allowOrderFillAlerts = alertMode == "Order fills and alert() function calls" or alertMode == "Order fills only"
+var bool allowFunctionCallAlerts = alertMode == "Order fills and alert() function calls" or alertMode == "alert() function calls only"
+
+// Alert flag variables
+var bool alertSent_entry_long = false
+var bool alertSent_entry_short = false
+var bool alertSent_exit_long = false
+var bool alertSent_exit_short = false
+var bool alertSent_tp1_long = false
+var bool alertSent_tp2_long = false
+var bool alertSent_tp3_long = false
+var bool alertSent_tp1_short = false
+var bool alertSent_tp2_short = false
+var bool alertSent_tp3_short = false
+
+// Convert alert frequency string to alert frequency value
+getAlertFreq() =>
+    alertFrequency == "Once per bar" ? alert.freq_once_per_bar : alertFrequency == "Once per close" ? alert.freq_once_per_bar_close : alert.freq_all
+
+// Simplified function to manage alerts (without API content)
+triggerAlert(string messageTitle, string messageContent, bool alertCondition, bool alertFlag, bool isOrderFill = false) =>
+    bool newAlertFlag = alertFlag
+    
+    // Only proceed if this type of alert is allowed based on user settings
+    bool allowAlert = isOrderFill ? allowOrderFillAlerts : allowFunctionCallAlerts
+    
+    if alertCondition and not alertFlag and allowAlert
+        string message = messageContent
+        if message != ""
+            alert(message, getAlertFreq())
+        newAlertFlag := true
+    newAlertFlag
+
+// Reset alert flags on new bar if using once per bar alert frequency
+if barstate.isconfirmed and alertFrequency == "Once per bar"
+    alertSent_entry_long := false
+    alertSent_entry_short := false
+    alertSent_exit_long := false
+    alertSent_exit_short := false
+    alertSent_tp1_long := false
+    alertSent_tp2_long := false
+    alertSent_tp3_long := false
+    alertSent_tp1_short := false
+    alertSent_tp2_short := false
+    alertSent_tp3_short := false
+
+// Reset alert flags on bar close if using once per close alert frequency
+if barstate.isconfirmed and alertFrequency == "Once per close"
+    alertSent_entry_long := false
+    alertSent_entry_short := false
+    alertSent_exit_long := false
+    alertSent_exit_short := false
+    alertSent_tp1_long := false
+    alertSent_tp2_long := false
+    alertSent_tp3_long := false
+    alertSent_tp1_short := false
+    alertSent_tp2_short := false
+    alertSent_tp3_short := false
+
+// ----------------------
+// Function Call Alerts 
+// ----------------------
+// These are triggered by signal conditions, independent of actual order execution
+// They will only trigger if alertMode is "Order fills and alert() function calls" or "alert() function calls only"
+
+// Entry alerts for signal conditions
+bool longEntryValid = longCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0
+bool shortEntryValid = shortCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0
+
+if longEntryValid 
+    alertSent_entry_long := triggerAlert("Long Entry", i_alert_txt_entry_long, true, alertSent_entry_long, false)
+
+if shortEntryValid
+    alertSent_entry_short := triggerAlert("Short Entry", i_alert_txt_entry_short, true, alertSent_entry_short, false)
+
+// Exit alerts for signal conditions
+if tradeActive and isLong and (
+   (force_exit and not longCondition) or 
+   (not stopLossDisabled and not na(entrySL) and low <= entrySL) or
+   (takeProfitType != "None" and not na(entryTP) and high >= entryTP and close > entryPrice) or
+   (earlyExitProtection and close < earlyExitMA) or
+   (useTrendilio and (
+     (trendilioTradeType == "OS/OB exit" and exitOS) or
+     (trendilioTradeType == "OS/OB reverse exit" and (exitOS or (smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0))) or
+     (trendilioTradeType == "OS/OB reverse" and (exitOS or (smoothed_davpch < 0 and smoothed_davpch[1] < 0 and smoothed_davpch[2] < 0)))
+   ))
+  )
+    alertSent_exit_long := triggerAlert("Long Exit", i_alert_txt_exit_long, true, alertSent_exit_long, false)
+
+if tradeActive and not isLong and (
+   (force_exit and not shortCondition) or 
+   (not stopLossDisabled and not na(entrySL) and high >= entrySL) or
+   (takeProfitType != "None" and not na(entryTP) and low <= entryTP and close < entryPrice) or
+   (earlyExitProtection and close > earlyExitMA) or
+   (useTrendilio and (
+     (trendilioTradeType == "OS/OB exit" and exitOB) or
+     (trendilioTradeType == "OS/OB reverse exit" and (exitOB or (smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0))) or
+     (trendilioTradeType == "OS/OB reverse" and (exitOB or (smoothed_davpch > 0 and smoothed_davpch[1] > 0 and smoothed_davpch[2] > 0)))
+   ))
+  )
+    alertSent_exit_short := triggerAlert("Short Exit", i_alert_txt_exit_short, true, alertSent_exit_short, false)
+
+// The Reversal Mode Alerts - these are function call alerts
+if reversalMode and canExecuteSignal and not waitForNewBarEntry
+    // Reversal from Short to Long
+    if longTrades and longCondition and strategy.position_size < 0
+        alertSent_entry_long := triggerAlert("Reversal to Long", i_alert_txt_entry_long, true, alertSent_entry_long, false)
+        alertSent_exit_short := triggerAlert("Exit Short", i_alert_txt_exit_short, true, alertSent_exit_short, false)
+    
+    // Reversal from Long to Short
+    if shortTrades and shortCondition and strategy.position_size > 0
+        alertSent_entry_short := triggerAlert("Reversal to Short", i_alert_txt_entry_short, true, alertSent_entry_short, false)
+        alertSent_exit_long := triggerAlert("Exit Long", i_alert_txt_exit_long, true, alertSent_exit_long, false)
+
+// ----------------------
+// Order Fill Alerts 
+// ----------------------
+// These are triggered when orders are filled
+// They will only trigger if alertMode is "Order fills and alert() function calls" or "Order fills only"
+
+// Take profit alerts for multi TP levels
+if useMultiTP and tradeActive
+    // TP1 Long Alert
+    if isLong and tp1Enabled and not tp1Reached and high >= tp1Price and not alertSent_tp1_long
+        alertSent_tp1_long := triggerAlert("TP1 Long", i_alert_txt_tp1_long, true, alertSent_tp1_long, true)
+    
+    // TP2 Long Alert
+    if isLong and tp2Enabled and not tp2Reached and high >= tp2Price and not alertSent_tp2_long
+        alertSent_tp2_long := triggerAlert("TP2 Long", i_alert_txt_tp2_long, true, alertSent_tp2_long, true)
+    
+    // TP3 Long Alert
+    if isLong and not tp3Reached and high >= tp3Price and not alertSent_tp3_long
+        alertSent_tp3_long := triggerAlert("TP3 Long", i_alert_txt_tp3_long, true, alertSent_tp3_long, true)
+    
+    // TP1 Short Alert
+    if not isLong and tp1Enabled and not tp1Reached and low <= tp1Price and not alertSent_tp1_short
+        alertSent_tp1_short := triggerAlert("TP1 Short", i_alert_txt_tp1_short, true, alertSent_tp1_short, true)
+    
+    // TP2 Short Alert
+    if not isLong and tp2Enabled and not tp2Reached and low <= tp2Price and not alertSent_tp2_short
+        alertSent_tp2_short := triggerAlert("TP2 Short", i_alert_txt_tp2_short, true, alertSent_tp2_short, true)
+    
+    // TP3 Short Alert
+    if not isLong and not tp3Reached and low <= tp3Price and not alertSent_tp3_short
+        alertSent_tp3_short := triggerAlert("TP3 Short", i_alert_txt_tp3_short, true, alertSent_tp3_short, true)
+
+// End of Session Alerts
+if useSessions and isEndOfSession() and tradeActive
+    if isLong and strategy.position_size > 0
+        alertSent_exit_long := triggerAlert("End of Session Exit Long", i_alert_txt_exit_long, true, alertSent_exit_long, true)
+    else if not isLong and strategy.position_size < 0
+        alertSent_exit_short := triggerAlert("End of Session Exit Short", i_alert_txt_exit_short, true, alertSent_exit_short, true)
+
+// ----------------------
+// 37) Monthly Performance Overview
+// ----------------------
+var g_dashboard      = "📊Monthly Performance Overview📊"
+var profit_loss_table= "Statistics Table Inputs"
+showTable            = input.bool(true, "Display Monthly Returns Table?", group=profit_loss_table, tooltip="Enable to show a performance table summarizing monthly returns in TradingView.")
+prec                 = input.int(2, "Table Precision", group=profit_loss_table, tooltip="Set the decimal precision for the monthly returns table.")
+
+// MONTHLY PNL LOGIC ONLY EXECUTES IF optimizingTime IS FALSE
+if not optimizingTime
+    ///////////////////////////////////////////////////////////////////////
+    // Put all your monthly P&L logic inside this if-condition:
+    ///////////////////////////////////////////////////////////////////////
+
+    // Month names array
+    var month_names = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+    // Color options
+    loss_colour = color.red
+    win_colour = color.green
+    cell_text_colour = color.white
+
+    // Is new month?
+    new_month = ta.change(month(time)) != 0
+    new_year  = ta.change(year(time)) != 0
+
+    // Get strategy equity and compare to previous bar
+    eq       = strategy.equity
+    bar_pnl  = eq / eq[1] - 1
+
+    var float cur_month_pnl = 0.0
+    var float cur_year_pnl  = 0.0
+
+    // Current Monthly P&L
+    cur_month_pnl := new_month ? 0.0 : (1 + cur_month_pnl[1]) * (1 + bar_pnl) - 1 
+
+    // Current Yearly P&L
+    cur_year_pnl := new_year ? 0.0 : (1 + cur_year_pnl[1]) * (1 + bar_pnl) - 1  
+
+    // Arrays to store Yearly and Monthly P&Ls
+    var month_pnl  = array.new_float(0)
+    var month_time = array.new_int(0)
+
+    // Initialize arrays with at least one value to prevent empty array errors
+    var int bar_count = 0
+    bar_count := bar_count[1] + 1
+    if bar_count == 1
+        array.push(month_pnl, 0.0)
+        array.push(month_time, time)
+
+    if (new_month)
+        array.push(month_pnl, nz(cur_month_pnl[1], 0.0))  // Force NaN to 0.0
+        array.push(month_time, time[1])
+
+    ///////////////////////////////////////////////////////////////////////
+    // CREATE AND RENDER THE TABLE IF showTable == true
+    ///////////////////////////////////////////////////////////////////////
+    if showTable
+        current_year  = year(time)
+        current_month = month(time)
+        
+        // Create table with fixed size to avoid bounds issues
+        var pnl_table = table.new(position.bottom_right, columns=13, rows=6, border_width=1, bgcolor=color.new(color.black, 10))
+        
+        // Headers
+        table.cell(pnl_table, 0, 0, "Year", bgcolor=color.new(color.navy, 10), text_color=color.white, text_size=size.small)
+        for i = 0 to 11
+            table.cell(pnl_table, i + 1, 0, array.get(month_names, i), bgcolor=color.new(color.navy, 10), text_color=color.white, text_size=size.small)
+        
+        // Create an array to track unique years
+        var years = array.new_int(0)
+        array.clear(years)
+        
+        // Collect unique years
+        if array.size(month_time) > 0
+            for i = 0 to array.size(month_time) - 1
+                y = year(array.get(month_time, i))
+                if array.indexof(years, y) == -1
+                    array.push(years, y)
+        
+        // Add current year if not already present
+        if array.indexof(years, current_year) == -1
+            array.push(years, current_year)
+        
+        // Sort years in descending order
+        array.sort(years, order.descending)
+        
+        // Populate table for each year
+        for row = 0 to array.size(years) - 1
+            int yr = array.get(years, row)
+            
+            // Populate year cell
+            table.cell(pnl_table, 0, row + 1, str.tostring(yr), bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=size.small)
+            
+            // Fill in monthly data for this year
+            for month_idx = 1 to 12
+                // Skip future months in current year
+                if yr == current_year and month_idx > current_month
+                    table.cell(pnl_table, month_idx, row + 1, "", bgcolor=color.new(color.gray, 70), text_size=size.small)
+                    continue
+                
+                // Find matching month in stored data
+                float m_pnl = 0.0
+                bool found_month = false
+                if array.size(month_pnl) > 0
+                    for i = 0 to array.size(month_pnl) - 1
+                        int data_year  = year(array.get(month_time, i))
+                        int data_month = month(array.get(month_time, i))
+                        
+                        if data_year == yr and data_month == month_idx
+                            m_pnl       := array.get(month_pnl, i)
+                            found_month := true
+                            break
+                
+                // Render month cell
+                if found_month and m_pnl != 0
+                    color cell_bg = m_pnl > 0 ? color.new(color.green, 20) : color.new(color.red, 20)
+                    table.cell(pnl_table, month_idx, row + 1,
+                               str.tostring(math.round(m_pnl * 100, prec)),
+                               bgcolor=cell_bg, text_color=color.white, text_size=size.small)
+                else if yr != current_year
+                    table.cell(pnl_table, month_idx, row + 1, "", bgcolor=color.new(color.white, 100), text_size=size.small)
