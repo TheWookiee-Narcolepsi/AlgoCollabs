@@ -2559,10 +2559,10 @@ if reversalMode and canExecuteSignal and not waitForNewBarEntry
             tp3Reached := false
         else if not stopLossDisabled
             if takeProfitType != "None"
-                alert_message_exit_long := generateAlertJson("sell", strategy.position_size, close, entryTP, entrySL, true)
+                alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, entryTP, entrySL, true) : i_alert_txt_exit_long 
                 strategy.exit("Exit Long", "Long", stop=entrySL, limit=entryTP, alert_message=alert_message_exit_long)
             else
-                alert_message_exit_long := generateAlertJson("sell", strategy.position_size, close, 0, entrySL, true)
+                alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, entrySL, true) : i_alert_txt_exit_long
                 strategy.exit("SL Long", "Long", stop=entrySL, alert_message=alert_message_exit_long)
     
     // Check for short signal while in long position
@@ -2603,10 +2603,10 @@ if reversalMode and canExecuteSignal and not waitForNewBarEntry
             tp3Reached := false
         else if not stopLossDisabled
             if takeProfitType != "None"
-                alert_message_exit_short := generateAlertJson("buy", math.abs(strategy.position_size), close, entryTP, entrySL, false)
+                alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, entryTP, entrySL, false) : i_alert_txt_exit_short
                 strategy.exit("Exit Short", "Short", stop=entrySL, limit=entryTP, alert_message=alert_message_exit_short)
             else
-                alert_message_exit_short := generateAlertJson("buy", math.abs(strategy.position_size), close, 0, entrySL, false)
+                alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, entrySL, false) : i_alert_txt_exit_short
                 strategy.exit("SL Short", "Short", stop=entrySL, alert_message=alert_message_exit_short)
 
 // Normal entry logic (for new positions)
@@ -2724,17 +2724,17 @@ if strategy.position_size == 0 and not waitForNewBarEntry
                     stopLossDisabled := true
                     if takeProfitType != "None"
                         // Only use take profit
-                        alert_message_exit_long := generateAlertJson("sell", strategy.position_size, close, tpLong, 0, true)
+                        alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, tpLong, 0, true) : i_alert_txt_exit_long 
                         strategy.exit("TP Long", "Long", limit=tpLong, alert_message=alert_message_exit_long)
                 else
                     stopLossDisabled := false
                     // Use both SL and TP
                     if not stopLossDisabled
                         if takeProfitType != "None"
-                            alert_message_exit_long := generateAlertJson("sell", strategy.position_size, close, entryTP, entrySL, true)
+                            alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, entryTP, entrySL, true) : i_alert_txt_exit_long 
                             strategy.exit("Exit Long", "Long", stop=entrySL, limit=entryTP, alert_message=alert_message_exit_long)
                         else
-                            alert_message_exit_long := generateAlertJson("sell", strategy.position_size, close, 0, entrySL, true)
+                            alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, entrySL, true) : i_alert_txt_exit_long 
                             strategy.exit("SL Long", "Long", stop=entrySL, alert_message=alert_message_exit_long)
             
         // Short entry when we're flat
@@ -2777,17 +2777,17 @@ if strategy.position_size == 0 and not waitForNewBarEntry
                     stopLossDisabled := true
                     if takeProfitType != "None"
                         // Only use take profit
-                        alert_message_exit_short := generateAlertJson("buy", math.abs(strategy.position_size), close, tpShort, 0, false)
+                        alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, tpShort, 0, false) : i_alert_txt_exit_short
                         strategy.exit("TP Short", "Short", limit=tpShort, alert_message=alert_message_exit_short)
                 else
                     stopLossDisabled := false
                     // Use both SL and TP
                     if not stopLossDisabled
                         if takeProfitType != "None"
-                            alert_message_exit_short := generateAlertJson("buy", math.abs(strategy.position_size), close, entryTP, entrySL, false)
+                            alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, entryTP, entrySL, false) : i_alert_txt_exit_short
                             strategy.exit("Exit Short", "Short", stop=entrySL, limit=entryTP, alert_message=alert_message_exit_short)
                         else
-                            alert_message_exit_short := generateAlertJson("buy", math.abs(strategy.position_size), close, 0, entrySL, false)
+                            alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, entrySL, false) : i_alert_txt_exit_short
                             strategy.exit("SL Short", "Short", stop=entrySL, alert_message=alert_message_exit_short)
     else
         strategy.cancel("Long")
@@ -3100,788 +3100,788 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                     waitForNewBarExit := true
                     currentPosition := "flat"
 
-// ----------------------
-// Alert Variables and Helpers
-// ----------------------
-// Set up alert preferences based on your needs
-var bool useOnlyStrategyAlerts = true  // Set to true to use only built-in strategy alerts
-var bool allowOrderFillAlerts = true   // Always allow alerts from strategy operations
-var bool allowFunctionCallAlerts = not useOnlyStrategyAlerts  // Only allow custom alerts if not using strategy-only mode
+// // ----------------------
+// // Alert Variables and Helpers
+// // ----------------------
+// // Set up alert preferences based on your needs
+// var bool useOnlyStrategyAlerts = true  // Set to true to use only built-in strategy alerts
+// var bool allowOrderFillAlerts = true   // Always allow alerts from strategy operations
+// var bool allowFunctionCallAlerts = not useOnlyStrategyAlerts  // Only allow custom alerts if not using strategy-only mode
 
-// Alert flag variables to prevent duplicate alerts
-var bool alertSent_entry_long = false
-var bool alertSent_entry_short = false
-var bool alertSent_exit_long = false
-var bool alertSent_exit_short = false
-var bool alertSent_tp1_long = false
-var bool alertSent_tp2_long = false
-var bool alertSent_tp3_long = false
-var bool alertSent_tp1_short = false
-var bool alertSent_tp2_short = false
-var bool alertSent_tp3_short = false
-var bool alertSent_custom_indicator1 = false
-var bool alertSent_custom_indicator2 = false
-var bool alertSent_custom_indicator3 = false
-var bool alertSent_custom_indicator4 = false
+// // Alert flag variables to prevent duplicate alerts
+// var bool alertSent_entry_long = false
+// var bool alertSent_entry_short = false
+// var bool alertSent_exit_long = false
+// var bool alertSent_exit_short = false
+// var bool alertSent_tp1_long = false
+// var bool alertSent_tp2_long = false
+// var bool alertSent_tp3_long = false
+// var bool alertSent_tp1_short = false
+// var bool alertSent_tp2_short = false
+// var bool alertSent_tp3_short = false
+// var bool alertSent_custom_indicator1 = false
+// var bool alertSent_custom_indicator2 = false
+// var bool alertSent_custom_indicator3 = false
+// var bool alertSent_custom_indicator4 = false
 
-// Reset alert flags on new bar (not on close - this is important)
-if barstate.isnew
-    alertSent_entry_long := false
-    alertSent_entry_short := false
-    alertSent_exit_long := false
-    alertSent_exit_short := false
-    alertSent_tp1_long := false
-    alertSent_tp2_long := false
-    alertSent_tp3_long := false
-    alertSent_tp1_short := false
-    alertSent_tp2_short := false
-    alertSent_tp3_short := false
-    alertSent_custom_indicator1 := false
-    alertSent_custom_indicator2 := false
-    alertSent_custom_indicator3 := false
-    alertSent_custom_indicator4 := false
+// // Reset alert flags on new bar (not on close - this is important)
+// if barstate.isnew
+//     alertSent_entry_long := false
+//     alertSent_entry_short := false
+//     alertSent_exit_long := false
+//     alertSent_exit_short := false
+//     alertSent_tp1_long := false
+//     alertSent_tp2_long := false
+//     alertSent_tp3_long := false
+//     alertSent_tp1_short := false
+//     alertSent_tp2_short := false
+//     alertSent_tp3_short := false
+//     alertSent_custom_indicator1 := false
+//     alertSent_custom_indicator2 := false
+//     alertSent_custom_indicator3 := false
+//     alertSent_custom_indicator4 := false
 
-// Convert alert frequency string to alert frequency value
-getAlertFreq() =>
-    // Always default to once per bar (not on close) for instant alerts
-    alertFrequency == "Once per bar" ? alert.freq_once_per_bar : alertFrequency == "Once per close" ? alert.freq_once_per_bar_close : alertFrequency == "All" ? alert.freq_all : alert.freq_once_per_bar
+// // Convert alert frequency string to alert frequency value
+// getAlertFreq() =>
+//     // Always default to once per bar (not on close) for instant alerts
+//     alertFrequency == "Once per bar" ? alert.freq_once_per_bar : alertFrequency == "Once per close" ? alert.freq_once_per_bar_close : alertFrequency == "All" ? alert.freq_all : alert.freq_once_per_bar
 
-// Format alert message for Minimalist Bot Mode - completely rewritten for reliable JSON
-formatMinimalistBotMessage(string action, float qty, float price, string ticker) =>
-    // Make sure qty is never zero or empty - use a minimum value if needed
-    float safeQty = qty <= 0 ? 0.001 : qty
+// // Format alert message for Minimalist Bot Mode - completely rewritten for reliable JSON
+// formatMinimalistBotMessage(string action, float qty, float price, string ticker) =>
+//     // Make sure qty is never zero or empty - use a minimum value if needed
+//     float safeQty = qty <= 0 ? 0.001 : qty
     
-    // Format JSON as a single line string without any breaks
-    string message = "{"
+//     // Format JSON as a single line string without any breaks
+//     string message = "{"
     
-    // Add common fields based on exchange format
-    if exchangeFormat == "MT5"
-        // MT5 format (single-line JSON for more reliable parsing)
-        message := message + "\"simplified\":\"1\",\"inverse\":\"0\",\"encryptor\":\"1\",\"unified\":\"0\",\"api_key\":\"" + apiKey + "\",\"accountnumber\":\"" + accountNumber + "\",\"passphrase\":\"ABCDEFG\",\"email_id\":\"" + emailId + "\",\"magic_number\":\"" + magicNumber + "\",\"round\":\"0\",\"round_inf\":\"1\""
-    else
-        // Crypto Exchange format (single-line JSON for more reliable parsing)
-        message := message + "\"simplified\":\"1\",\"inverse\":\"0\",\"encryptor\":\"1\",\"unified\":\"1\",\"api_key\":\"" + apiKey + "\",\"secret_key\":\"" + secretKey + "\",\"passphrase\":\"ABCDEFG\",\"email_id\":\"" + emailId + "\""
+//     // Add common fields based on exchange format
+//     if exchangeFormat == "MT5"
+//         // MT5 format (single-line JSON for more reliable parsing)
+//         message := message + "\"simplified\":\"1\",\"inverse\":\"0\",\"encryptor\":\"1\",\"unified\":\"0\",\"api_key\":\"" + apiKey + "\",\"accountnumber\":\"" + accountNumber + "\",\"passphrase\":\"ABCDEFG\",\"email_id\":\"" + emailId + "\",\"magic_number\":\"" + magicNumber + "\",\"round\":\"0\",\"round_inf\":\"1\""
+//     else
+//         // Crypto Exchange format (single-line JSON for more reliable parsing)
+//         message := message + "\"simplified\":\"1\",\"inverse\":\"0\",\"encryptor\":\"1\",\"unified\":\"1\",\"api_key\":\"" + apiKey + "\",\"secret_key\":\"" + secretKey + "\",\"passphrase\":\"ABCDEFG\",\"email_id\":\"" + emailId + "\""
     
-    // Add trade-specific information with explicit quantity formatting
-    message := message + ",\"action\":\"" + action + "\""
-    message := message + ",\"qty\":\"" + str.tostring(safeQty, "#.#####") + "\""
-    message := message + ",\"position_size\":\"" + str.tostring(math.abs(strategy.position_size), "#.#####") + "\""
-    message := message + ",\"price\":\"" + str.tostring(price, "#.#####") + "\""
-    message := message + ",\"signal_param\":\"{}\",\"signal_type\":\"\",\"coin_pair\":\"" + ticker + "\""
-    message := message + ",\"time\":\"" + str.format("{0,number,00}-{1,number,00}-{2,number,00} {3,number,00}:{4,number,00}", year(time), month(time), dayofmonth(time), hour(time), minute(time)) + "\""
+//     // Add trade-specific information with explicit quantity formatting
+//     message := message + ",\"action\":\"" + action + "\""
+//     message := message + ",\"qty\":\"" + str.tostring(safeQty, "#.#####") + "\""
+//     message := message + ",\"position_size\":\"" + str.tostring(math.abs(strategy.position_size), "#.#####") + "\""
+//     message := message + ",\"price\":\"" + str.tostring(price, "#.#####") + "\""
+//     message := message + ",\"signal_param\":\"{}\",\"signal_type\":\"\",\"coin_pair\":\"" + ticker + "\""
+//     message := message + ",\"time\":\"" + str.format("{0,number,00}-{1,number,00}-{2,number,00} {3,number,00}:{4,number,00}", year(time), month(time), dayofmonth(time), hour(time), minute(time)) + "\""
     
-    // Add optional safety parameters
-    if useSafetyTP
-        message := message + ",\"safety_tp\":\"1\""
+//     // Add optional safety parameters
+//     if useSafetyTP
+//         message := message + ",\"safety_tp\":\"1\""
     
-    if useSafetySL
-        message := message + ",\"safety_sl\":\"1\""
+//     if useSafetySL
+//         message := message + ",\"safety_sl\":\"1\""
         
-    // Add Telegram channel ID if provided
-    if telegramChannelID != ""
-        message := message + ",\"telegram_channel_id\":\"" + telegramChannelID + "\""
+//     // Add Telegram channel ID if provided
+//     if telegramChannelID != ""
+//         message := message + ",\"telegram_channel_id\":\"" + telegramChannelID + "\""
         
-    // Add mandatory params for MinimalistBot
-    message := message + ",\"margin_mode\":\"1\",\"use_testnet\":\"0\",\"qty_in_percentage\":\"0\""
+//     // Add mandatory params for MinimalistBot
+//     message := message + ",\"margin_mode\":\"1\",\"use_testnet\":\"0\",\"qty_in_percentage\":\"0\""
     
-    // Handle order type based on action and current position
-    if action == "buy"
-        // For buy actions
-        if strategy.position_size < 0
-            // Buying to close/reduce a short position
-            message := message + ",\"order_type\":\"reduce_short\",\"position\":\"5\""
-        else
-            // Buying to open a long position
-            message := message + ",\"order_type\":\"enter_long\",\"position\":\"0\""
-    else if action == "sell"
-        // For sell actions
-        if strategy.position_size > 0
-            // Selling to close/reduce a long position
-            message := message + ",\"order_type\":\"reduce_long\",\"position\":\"0\""
-        else
-            // Selling to open a short position
-            message := message + ",\"order_type\":\"enter_short\",\"position\":\"5\""
-    else
-        // Fallback for unexpected actions
-        message := message + ",\"order_type\":\"" + (action == "buy" ? "enter_long" : "enter_short") + "\",\"position\":\"" + (action == "buy" ? "0" : "5") + "\""
+//     // Handle order type based on action and current position
+//     if action == "buy"
+//         // For buy actions
+//         if strategy.position_size < 0
+//             // Buying to close/reduce a short position
+//             message := message + ",\"order_type\":\"reduce_short\",\"position\":\"5\""
+//         else
+//             // Buying to open a long position
+//             message := message + ",\"order_type\":\"enter_long\",\"position\":\"0\""
+//     else if action == "sell"
+//         // For sell actions
+//         if strategy.position_size > 0
+//             // Selling to close/reduce a long position
+//             message := message + ",\"order_type\":\"reduce_long\",\"position\":\"0\""
+//         else
+//             // Selling to open a short position
+//             message := message + ",\"order_type\":\"enter_short\",\"position\":\"5\""
+//     else
+//         // Fallback for unexpected actions
+//         message := message + ",\"order_type\":\"" + (action == "buy" ? "enter_long" : "enter_short") + "\",\"position\":\"" + (action == "buy" ? "0" : "5") + "\""
     
-    // Add leverage info
-    message := message + ",\"leverage\":\"" + str.tostring(userLeverage) + "\",\"sell_leverage\":\"" + str.tostring(userLeverage) + "\",\"buy_leverage\":\"" + str.tostring(userLeverage) + "\""
+//     // Add leverage info
+//     message := message + ",\"leverage\":\"" + str.tostring(userLeverage) + "\",\"sell_leverage\":\"" + str.tostring(userLeverage) + "\",\"buy_leverage\":\"" + str.tostring(userLeverage) + "\""
     
-    // Add multi-TP settings
-    message := message + ",\"enable_multi_tp\":\"" + (useMultiTP ? "1" : "0") + "\",\"pyramiding\":\"0\""
+//     // Add multi-TP settings
+//     message := message + ",\"enable_multi_tp\":\"" + (useMultiTP ? "1" : "0") + "\",\"pyramiding\":\"0\""
     
-    if useMultiTP
-        message := message + ",\"tp_type\":\"0\",\"multi_tp\":\"0\",\"tp_3_size\":\"100\",\"tp_3_price\":\"" + str.tostring(action == "buy" ? tp3Long : tp3Short, "#.#####") + "\""
+//     if useMultiTP
+//         message := message + ",\"tp_type\":\"0\",\"multi_tp\":\"0\",\"tp_3_size\":\"100\",\"tp_3_price\":\"" + str.tostring(action == "buy" ? tp3Long : tp3Short, "#.#####") + "\""
     
-    // Add stop loss price if available
-    if not stopLossDisabled
-        message := message + ",\"stop_loss_price\":\"" + str.tostring(action == "buy" ? slLong : slShort, "#.#####") + "\""
+//     // Add stop loss price if available
+//     if not stopLossDisabled
+//         message := message + ",\"stop_loss_price\":\"" + str.tostring(action == "buy" ? slLong : slShort, "#.#####") + "\""
     
-    // Close the JSON object
-    message := message + "}"
+//     // Close the JSON object
+//     message := message + "}"
     
-    message
+//     message
 
-// Format alert message with placeholders
-formatAlertMessage(string template, float qty, float entryPrice, float tp, float sl, string direction) =>
-    string message = template
+// // Format alert message with placeholders
+// formatAlertMessage(string template, float qty, float entryPrice, float tp, float sl, string direction) =>
+//     string message = template
     
-    // Basic order information
-    message := str.replace(message, "#pair#", syminfo.ticker)
-    message := str.replace(message, "#dir#", direction)
-    message := str.replace(message, "#side#", direction == "Buy" ? "Long" : "Short")
-    message := str.replace(message, "#qty#", str.tostring(f_round_qty(qty), "#.#####"))
-    message := str.replace(message, "#margin#", str.tostring(f_round_qty(qty), "#.#####"))
+//     // Basic order information
+//     message := str.replace(message, "#pair#", syminfo.ticker)
+//     message := str.replace(message, "#dir#", direction)
+//     message := str.replace(message, "#side#", direction == "Buy" ? "Long" : "Short")
+//     message := str.replace(message, "#qty#", str.tostring(f_round_qty(qty), "#.#####"))
+//     message := str.replace(message, "#margin#", str.tostring(f_round_qty(qty), "#.#####"))
     
-    // Price information with additional precision
-    message := str.replace(message, "#price#", str.tostring(entryPrice, "#.#####"))
-    message := str.replace(message, "#entry#", str.tostring(entryPrice, "#.#####"))
-    message := str.replace(message, "#TP#", str.tostring(tp, "#.#####"))
-    message := str.replace(message, "#SL#", str.tostring(sl, "#.#####"))
+//     // Price information with additional precision
+//     message := str.replace(message, "#price#", str.tostring(entryPrice, "#.#####"))
+//     message := str.replace(message, "#entry#", str.tostring(entryPrice, "#.#####"))
+//     message := str.replace(message, "#TP#", str.tostring(tp, "#.#####"))
+//     message := str.replace(message, "#SL#", str.tostring(sl, "#.#####"))
     
-    // Risk and position information
-    message := str.replace(message, "#lev#", str.tostring(userLeverage, "#.##"))
-    message := str.replace(message, "#risk#", str.tostring(useFixedRiskPct ? 1.0 : risk, "#.##") + "%")
-    message := str.replace(message, "#riskUSD#", str.tostring(strategy.equity * ((useFixedRiskPct ? 1.0 : risk) / 100), "#.##"))
+//     // Risk and position information
+//     message := str.replace(message, "#lev#", str.tostring(userLeverage, "#.##"))
+//     message := str.replace(message, "#risk#", str.tostring(useFixedRiskPct ? 1.0 : risk, "#.##") + "%")
+//     message := str.replace(message, "#riskUSD#", str.tostring(strategy.equity * ((useFixedRiskPct ? 1.0 : risk) / 100), "#.##"))
     
-    // Stop loss and take profit distances
-    float slDistPct = na(sl) or na(entryPrice) ? 0.0 : math.abs(sl - entryPrice) / entryPrice * 100
-    float tpDistPct = na(tp) or na(entryPrice) ? 0.0 : math.abs(tp - entryPrice) / entryPrice * 100
-    message := str.replace(message, "#SLdist#", str.tostring(slDistPct, "#.##") + "%")
-    message := str.replace(message, "#TPdist#", str.tostring(tpDistPct, "#.##") + "%")
+//     // Stop loss and take profit distances
+//     float slDistPct = na(sl) or na(entryPrice) ? 0.0 : math.abs(sl - entryPrice) / entryPrice * 100
+//     float tpDistPct = na(tp) or na(entryPrice) ? 0.0 : math.abs(tp - entryPrice) / entryPrice * 100
+//     message := str.replace(message, "#SLdist#", str.tostring(slDistPct, "#.##") + "%")
+//     message := str.replace(message, "#TPdist#", str.tostring(tpDistPct, "#.##") + "%")
     
-    // Account and position information
-    message := str.replace(message, "#acc#", str.tostring(strategy.equity, "#.##"))
-    message := str.replace(message, "#equity#", str.tostring(strategy.equity, "#.##"))
-    message := str.replace(message, "#pos#", str.tostring(math.abs(strategy.position_size), "#.#####"))
+//     // Account and position information
+//     message := str.replace(message, "#acc#", str.tostring(strategy.equity, "#.##"))
+//     message := str.replace(message, "#equity#", str.tostring(strategy.equity, "#.##"))
+//     message := str.replace(message, "#pos#", str.tostring(math.abs(strategy.position_size), "#.#####"))
     
-    // Reward-to-risk ratio
-    float rrRatio = slDistPct > 0 ? tpDistPct / slDistPct : 0.0
-    message := str.replace(message, "#RR#", str.tostring(rrRatio, "#.##"))
+//     // Reward-to-risk ratio
+//     float rrRatio = slDistPct > 0 ? tpDistPct / slDistPct : 0.0
+//     message := str.replace(message, "#RR#", str.tostring(rrRatio, "#.##"))
     
-    // Current date/time placeholder
-    string dateStr = str.format("{0,number,00}-{1,number,00}-{2,number,00} {3,number,00}:{4,number,00}", year(time), month(time), dayofmonth(time), hour(time), minute(time))
-    message := str.replace(message, "#time#", dateStr)
+//     // Current date/time placeholder
+//     string dateStr = str.format("{0,number,00}-{1,number,00}-{2,number,00} {3,number,00}:{4,number,00}", year(time), month(time), dayofmonth(time), hour(time), minute(time))
+//     message := str.replace(message, "#time#", dateStr)
     
-    // API connector specific placeholders
-    if useAPIConnection
-        message := str.replace(message, "#testnet#", apiTestnet ? "1" : "0")
-        message := str.replace(message, "#marginmode#", marginMode == "Cross" ? "0" : "1")
-        message := str.replace(message, "#entryordertype#", entryOrderType == "Market" ? "0" : "1")
-        message := str.replace(message, "#exitordertype#", exitOrderType == "Market" ? "0" : "1")
-        message := str.replace(message, "#timeout#", str.tostring(orderTimeout))
+//     // API connector specific placeholders
+//     if useAPIConnection
+//         message := str.replace(message, "#testnet#", apiTestnet ? "1" : "0")
+//         message := str.replace(message, "#marginmode#", marginMode == "Cross" ? "0" : "1")
+//         message := str.replace(message, "#entryordertype#", entryOrderType == "Market" ? "0" : "1")
+//         message := str.replace(message, "#exitordertype#", exitOrderType == "Market" ? "0" : "1")
+//         message := str.replace(message, "#timeout#", str.tostring(orderTimeout))
     
-    message
+//     message
 
-// Function to trigger direct alerts - only used in MinimalistBot mode or when allowFunctionCallAlerts is true
-triggerAlert(string message) =>
-    if (barstate.isconfirmed or useImmediateAlerts) and (useMinimalistBot or allowFunctionCallAlerts)
-        alert(message, getAlertFreq())
+// // Function to trigger direct alerts - only used in MinimalistBot mode or when allowFunctionCallAlerts is true
+// triggerAlert(string message) =>
+//     if (barstate.isconfirmed or useImmediateAlerts) and (useMinimalistBot or allowFunctionCallAlerts)
+//         alert(message, getAlertFreq())
 
-// Get appropriate template based on current settings
-getLongEntryTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty, close, syminfo.ticker) : (i_alert_txt_entry_long != "" ? i_alert_txt_entry_long : "Buy #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#")
+// // Get appropriate template based on current settings
+// getLongEntryTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty, close, syminfo.ticker) : (i_alert_txt_entry_long != "" ? i_alert_txt_entry_long : "Buy #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#")
 
-getShortEntryTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty, close, syminfo.ticker) : (i_alert_txt_entry_short != "" ? i_alert_txt_entry_short : "Sell #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#")
+// getShortEntryTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty, close, syminfo.ticker) : (i_alert_txt_entry_short != "" ? i_alert_txt_entry_short : "Sell #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#")
 
-getLongExitTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", math.abs(strategy.position_size), close, syminfo.ticker) : (i_alert_txt_exit_long != "" ? i_alert_txt_exit_long : "Exit Long #pair# Q=#pos# Price=#price# PnL=#riskUSD#")
+// getLongExitTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", math.abs(strategy.position_size), close, syminfo.ticker) : (i_alert_txt_exit_long != "" ? i_alert_txt_exit_long : "Exit Long #pair# Q=#pos# Price=#price# PnL=#riskUSD#")
 
-getShortExitTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", math.abs(strategy.position_size), close, syminfo.ticker) : (i_alert_txt_exit_short != "" ? i_alert_txt_exit_short : "Exit Short #pair# Q=#pos# Price=#price# PnL=#riskUSD#")
+// getShortExitTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", math.abs(strategy.position_size), close, syminfo.ticker) : (i_alert_txt_exit_short != "" ? i_alert_txt_exit_short : "Exit Short #pair# Q=#pos# Price=#price# PnL=#riskUSD#")
 
-// Get TP alert templates - simplified as one-liners
-getTP1LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty * (tp1Percent / 100), tp1Price, syminfo.ticker) : (i_alert_txt_tp1_long != "" ? i_alert_txt_tp1_long : "TP1 Long #pair# Q=#qty# Price=#TP# #time#")
+// // Get TP alert templates - simplified as one-liners
+// getTP1LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty * (tp1Percent / 100), tp1Price, syminfo.ticker) : (i_alert_txt_tp1_long != "" ? i_alert_txt_tp1_long : "TP1 Long #pair# Q=#qty# Price=#TP# #time#")
 
-getTP2LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty * (tp2Percent / 100), tp2Price, syminfo.ticker) : (i_alert_txt_tp2_long != "" ? i_alert_txt_tp2_long : "TP2 Long #pair# Q=#qty# Price=#TP# #time#")
+// getTP2LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", roundedQty * (tp2Percent / 100), tp2Price, syminfo.ticker) : (i_alert_txt_tp2_long != "" ? i_alert_txt_tp2_long : "TP2 Long #pair# Q=#qty# Price=#TP# #time#")
 
-getTP3LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", strategy.position_size, tp3Price, syminfo.ticker) : (i_alert_txt_tp3_long != "" ? i_alert_txt_tp3_long : "TP3 Long #pair# Q=#qty# Price=#TP# #time#")
+// getTP3LongTemplate() => useMinimalistBot ? formatMinimalistBotMessage("sell", strategy.position_size, tp3Price, syminfo.ticker) : (i_alert_txt_tp3_long != "" ? i_alert_txt_tp3_long : "TP3 Long #pair# Q=#qty# Price=#TP# #time#")
 
-getTP1ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty * (tp1Percent / 100), tp1Price, syminfo.ticker) : (i_alert_txt_tp1_short != "" ? i_alert_txt_tp1_short : "TP1 Short #pair# Q=#qty# Price=#TP# #time#")
+// getTP1ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty * (tp1Percent / 100), tp1Price, syminfo.ticker) : (i_alert_txt_tp1_short != "" ? i_alert_txt_tp1_short : "TP1 Short #pair# Q=#qty# Price=#TP# #time#")
 
-getTP2ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty * (tp2Percent / 100), tp2Price, syminfo.ticker) : (i_alert_txt_tp2_short != "" ? i_alert_txt_tp2_short : "TP2 Short #pair# Q=#qty# Price=#TP# #time#")
+// getTP2ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", roundedQty * (tp2Percent / 100), tp2Price, syminfo.ticker) : (i_alert_txt_tp2_short != "" ? i_alert_txt_tp2_short : "TP2 Short #pair# Q=#qty# Price=#TP# #time#")
 
-getTP3ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", math.abs(strategy.position_size), tp3Price, syminfo.ticker) : (i_alert_txt_tp3_short != "" ? i_alert_txt_tp3_short : "TP3 Short #pair# Q=#qty# Price=#TP# #time#")
+// getTP3ShortTemplate() => useMinimalistBot ? formatMinimalistBotMessage("buy", math.abs(strategy.position_size), tp3Price, syminfo.ticker) : (i_alert_txt_tp3_short != "" ? i_alert_txt_tp3_short : "TP3 Short #pair# Q=#qty# Price=#TP# #time#")
 
-// Custom indicator alert templates
-getCustomIndicator1Template() => "Custom Indicator #1: " + (longComparison1 ? "Long Signal" : "") + (shortComparison1 ? "Short Signal" : "") + " on #pair# at #time#"
-getCustomIndicator2Template() => "Custom Indicator #2: " + (longComparison2 ? "Long Signal" : "") + (shortComparison2 ? "Short Signal" : "") + " on #pair# at #time#"
+// // Custom indicator alert templates
+// getCustomIndicator1Template() => "Custom Indicator #1: " + (longComparison1 ? "Long Signal" : "") + (shortComparison1 ? "Short Signal" : "") + " on #pair# at #time#"
+// getCustomIndicator2Template() => "Custom Indicator #2: " + (longComparison2 ? "Long Signal" : "") + (shortComparison2 ? "Short Signal" : "") + " on #pair# at #time#"
 
-// ----------------------
-// Main Alert Implementation Logic
-// ----------------------
-// Only implement this if we're not in optimization mode
-if not optimizingTime
-    // Define exit conditions as one-liners for readability
-    // WAE and Trendilio exit conditions
-    bool bearishMomentumSignal = d_avpch < 0 and nz(d_avpch[1]) < 0 and nz(d_avpch[2]) < 0
-    bool bullishMomentumSignal = d_avpch > 0 and nz(d_avpch[1]) > 0 and nz(d_avpch[2]) > 0
+// // ----------------------
+// // Main Alert Implementation Logic
+// // ----------------------
+// // Only implement this if we're not in optimization mode
+// if not optimizingTime
+//     // Define exit conditions as one-liners for readability
+//     // WAE and Trendilio exit conditions
+//     bool bearishMomentumSignal = d_avpch < 0 and nz(d_avpch[1]) < 0 and nz(d_avpch[2]) < 0
+//     bool bullishMomentumSignal = d_avpch > 0 and nz(d_avpch[1]) > 0 and nz(d_avpch[2]) > 0
     
-    // T3 exit conditions - specialized for this strategy
-    bool t3ExitLong = tradeActive and isLong and useT3 and t3Value < t3Value[1]
-    bool t3ExitShort = tradeActive and not isLong and useT3 and t3Value > t3Value[1]
+//     // T3 exit conditions - specialized for this strategy
+//     bool t3ExitLong = tradeActive and isLong and useT3 and t3Value < t3Value[1]
+//     bool t3ExitShort = tradeActive and not isLong and useT3 and t3Value > t3Value[1]
     
-    // WAE exit conditions - specific to this strategy
-    bool waeExitLong = tradeActive and isLong and useWAE and (useExplosionLine ? t1 < -e1 : trendDown > noTradeZoneThreshold)
-    bool waeExitShort = tradeActive and not isLong and useWAE and (useExplosionLine ? t1 > e1 : trendUp > noTradeZoneThreshold)
+//     // WAE exit conditions - specific to this strategy
+//     bool waeExitLong = tradeActive and isLong and useWAE and (useExplosionLine ? t1 < -e1 : trendDown > noTradeZoneThreshold)
+//     bool waeExitShort = tradeActive and not isLong and useWAE and (useExplosionLine ? t1 > e1 : trendUp > noTradeZoneThreshold)
 
-    // Trendilio exit conditionals
-    bool trendilioExitLong = tradeActive and isLong and useTrendilio and 
-                             ((trendilioTradeType == "OS/OB exit" and exitOS) or 
-                              (trendilioTradeType == "OS/OB reverse exit" and (exitOS or bearishMomentumSignal)) or 
-                              (trendilioTradeType == "OS/OB reverse" and (exitOS or bearishMomentumSignal)))
+//     // Trendilio exit conditionals
+//     bool trendilioExitLong = tradeActive and isLong and useTrendilio and 
+//                              ((trendilioTradeType == "OS/OB exit" and exitOS) or 
+//                               (trendilioTradeType == "OS/OB reverse exit" and (exitOS or bearishMomentumSignal)) or 
+//                               (trendilioTradeType == "OS/OB reverse" and (exitOS or bearishMomentumSignal)))
                               
-    bool trendilioExitShort = tradeActive and not isLong and useTrendilio and 
-                              ((trendilioTradeType == "OS/OB exit" and exitOB) or 
-                               (trendilioTradeType == "OS/OB reverse exit" and (exitOB or bullishMomentumSignal)) or 
-                               (trendilioTradeType == "OS/OB reverse" and (exitOB or bullishMomentumSignal)))
+//     bool trendilioExitShort = tradeActive and not isLong and useTrendilio and 
+//                               ((trendilioTradeType == "OS/OB exit" and exitOB) or 
+//                                (trendilioTradeType == "OS/OB reverse exit" and (exitOB or bullishMomentumSignal)) or 
+//                                (trendilioTradeType == "OS/OB reverse" and (exitOB or bullishMomentumSignal)))
 
-    // Combined exit conditions - ADD FORCE_EXIT INTEGRATION HERE
-    bool longExitCondition = tradeActive and isLong and ((not force_exit and ((not stopLossDisabled and not na(entrySL) and low <= entrySL) or (takeProfitType != "None" and not na(entryTP) and high >= entryTP and close > entryPrice) or (earlyExitProtection and close < earlyExitMA) or t3ExitLong or waeExitLong or trendilioExitLong)) or(force_exit and ((useT3 and t3ExitLong) or (useWAE and waeExitLong) or (useTrendilio and trendilioExitLong) or not longCondition)))
+//     // Combined exit conditions - ADD FORCE_EXIT INTEGRATION HERE
+//     bool longExitCondition = tradeActive and isLong and ((not force_exit and ((not stopLossDisabled and not na(entrySL) and low <= entrySL) or (takeProfitType != "None" and not na(entryTP) and high >= entryTP and close > entryPrice) or (earlyExitProtection and close < earlyExitMA) or t3ExitLong or waeExitLong or trendilioExitLong)) or(force_exit and ((useT3 and t3ExitLong) or (useWAE and waeExitLong) or (useTrendilio and trendilioExitLong) or not longCondition)))
     
-    bool shortExitCondition = tradeActive and not isLong and ((not force_exit and ((not stopLossDisabled and not na(entrySL) and high >= entrySL) or (takeProfitType != "None" and not na(entryTP) and low <= entryTP and close < entryPrice) or (earlyExitProtection and close > earlyExitMA) or t3ExitShort or waeExitShort or trendilioExitShort)) or (force_exit and ((useT3 and t3ExitShort) or (useWAE and waeExitShort) or (useTrendilio and trendilioExitShort) or not shortCondition)))
+//     bool shortExitCondition = tradeActive and not isLong and ((not force_exit and ((not stopLossDisabled and not na(entrySL) and high >= entrySL) or (takeProfitType != "None" and not na(entryTP) and low <= entryTP and close < entryPrice) or (earlyExitProtection and close > earlyExitMA) or t3ExitShort or waeExitShort or trendilioExitShort)) or (force_exit and ((useT3 and t3ExitShort) or (useWAE and waeExitShort) or (useTrendilio and trendilioExitShort) or not shortCondition)))
 
-    // Entry conditions for readability
-    bool longEntryValid = longCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0 and validLongEntry 
-    bool shortEntryValid = shortCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0 and validShortEntry
+//     // Entry conditions for readability
+//     bool longEntryValid = longCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0 and validLongEntry 
+//     bool shortEntryValid = shortCondition and canExecuteSignal and not waitForNewBarEntry and strategy.position_size == 0 and validShortEntry
 
-    // ----------------------
-    // CUSTOM INDICATOR ALERTS
-    // ----------------------
-    // These alerts will notify when your custom indicators generate signals
+//     // ----------------------
+//     // CUSTOM INDICATOR ALERTS
+//     // ----------------------
+//     // These alerts will notify when your custom indicators generate signals
     
-    // Custom Indicator 1 Alerts
-    if ActivateExternalComparison1 and allowFunctionCallAlerts and not alertSent_custom_indicator1
-        if (longComparison1 or shortComparison1) and canExecuteSignal
-            string alertMessage = getCustomIndicator1Template()
-            string formattedMessage = formatAlertMessage(alertMessage, 0, close, 0, 0, "Info")
-            triggerAlert(formattedMessage)
-            alertSent_custom_indicator1 := true
+//     // Custom Indicator 1 Alerts
+//     if ActivateExternalComparison1 and allowFunctionCallAlerts and not alertSent_custom_indicator1
+//         if (longComparison1 or shortComparison1) and canExecuteSignal
+//             string alertMessage = getCustomIndicator1Template()
+//             string formattedMessage = formatAlertMessage(alertMessage, 0, close, 0, 0, "Info")
+//             triggerAlert(formattedMessage)
+//             alertSent_custom_indicator1 := true
     
-    // Custom Indicator 2 Alerts
-    if ActivateExternalComparison2 and allowFunctionCallAlerts and not alertSent_custom_indicator2
-        if (longComparison2 or shortComparison2) and canExecuteSignal
-            string alertMessage = getCustomIndicator2Template()
-            string formattedMessage = formatAlertMessage(alertMessage, 0, close, 0, 0, "Info")
-            triggerAlert(formattedMessage)
-            alertSent_custom_indicator2 := true
+//     // Custom Indicator 2 Alerts
+//     if ActivateExternalComparison2 and allowFunctionCallAlerts and not alertSent_custom_indicator2
+//         if (longComparison2 or shortComparison2) and canExecuteSignal
+//             string alertMessage = getCustomIndicator2Template()
+//             string formattedMessage = formatAlertMessage(alertMessage, 0, close, 0, 0, "Info")
+//             triggerAlert(formattedMessage)
+//             alertSent_custom_indicator2 := true
      
-    // ----------------------
-    // ENTRY ALERTS
-    // ----------------------
-    // Long entry alert
-    if longEntryValid and not alertSent_entry_long
-        // First, get the correct alert message format
-        string alertMessage = getLongEntryTemplate()
+//     // ----------------------
+//     // ENTRY ALERTS
+//     // ----------------------
+//     // Long entry alert
+//     if longEntryValid and not alertSent_entry_long
+//         // First, get the correct alert message format
+//         string alertMessage = getLongEntryTemplate()
         
-        if useMinimalistBot
-            // For Minimalist Bot: send only the alert (without strategy.entry)
-            triggerAlert(alertMessage)
-        else
-            // For Advanced Bot: Use Custom Entry and Exit fields
-            triggerAlert(i_alert_txt_entry_long )
+//         if useMinimalistBot
+//             // For Minimalist Bot: send only the alert (without strategy.entry)
+//             triggerAlert(alertMessage)
+//         else
+//             // For Advanced Bot: Use Custom Entry and Exit fields
+//             triggerAlert(i_alert_txt_entry_long )
             
-            // If we also need custom alerts beyond strategy alerts
-            if allowFunctionCallAlerts
-                // Format the message correctly if it's not a MinimalistBot format
-                string formattedMessage = formatAlertMessage(alertMessage, roundedQty, close, tpLong, slLong, "Buy")
-                triggerAlert(formattedMessage)
+//             // If we also need custom alerts beyond strategy alerts
+//             if allowFunctionCallAlerts
+//                 // Format the message correctly if it's not a MinimalistBot format
+//                 string formattedMessage = formatAlertMessage(alertMessage, roundedQty, close, tpLong, slLong, "Buy")
+//                 triggerAlert(formattedMessage)
         
-        // Mark alert as sent
-        alertSent_entry_long := true
+//         // Mark alert as sent
+//         alertSent_entry_long := true
 
-    // Short entry alert
-    if shortEntryValid and not alertSent_entry_short
-        // First, get the correct alert message format
-        string alertMessage = getShortEntryTemplate()
+//     // Short entry alert
+//     if shortEntryValid and not alertSent_entry_short
+//         // First, get the correct alert message format
+//         string alertMessage = getShortEntryTemplate()
         
-        if useMinimalistBot
-            // For Minimalist Bot: send only the alert (without strategy.entry)
-            triggerAlert(alertMessage)
-        else
-            // For Advanced Bot: Use Custom Entry and Exit fields
-            triggerAlert(i_alert_txt_entry_short )
+//         if useMinimalistBot
+//             // For Minimalist Bot: send only the alert (without strategy.entry)
+//             triggerAlert(alertMessage)
+//         else
+//             // For Advanced Bot: Use Custom Entry and Exit fields
+//             triggerAlert(i_alert_txt_entry_short )
             
-            // If we also need custom alerts beyond strategy alerts
-            if allowFunctionCallAlerts
-                // Format the message correctly if it's not a MinimalistBot format
-                string formattedMessage = formatAlertMessage(alertMessage, roundedQty, close, tpShort, slShort, "Sell")
-                triggerAlert(formattedMessage)
+//             // If we also need custom alerts beyond strategy alerts
+//             if allowFunctionCallAlerts
+//                 // Format the message correctly if it's not a MinimalistBot format
+//                 string formattedMessage = formatAlertMessage(alertMessage, roundedQty, close, tpShort, slShort, "Sell")
+//                 triggerAlert(formattedMessage)
         
-        // Mark alert as sent
-        alertSent_entry_short := true
+//         // Mark alert as sent
+//         alertSent_entry_short := true
 
-    // ----------------------
-    // EXIT ALERTS
-    // ----------------------
-    // Long exit alert
-    if longExitCondition and canExecuteSignal and not alertSent_exit_long
-        // Get exit reason for better logging - IMPROVED FOR FORCE EXIT
-        string exitReason = "Exit Signal"  // Default reason
+//     // ----------------------
+//     // EXIT ALERTS
+//     // ----------------------
+//     // Long exit alert
+//     if longExitCondition and canExecuteSignal and not alertSent_exit_long
+//         // Get exit reason for better logging - IMPROVED FOR FORCE EXIT
+//         string exitReason = "Exit Signal"  // Default reason
         
-        // Determine exit reason based on conditions
-        if force_exit and useT3 and t3ExitLong
-            exitReason := "T3 Force Exit"
-        else if force_exit and useWAE and waeExitLong
-            exitReason := "WAE Force Exit"
-        else if force_exit and useTrendilio and trendilioExitLong
-            exitReason := "Trendilio Force Exit"
-        else if force_exit
-            exitReason := "General Force Exit"
-        else if not stopLossDisabled and not na(entrySL) and low <= entrySL
-            exitReason := "Stop Loss"
-        else if takeProfitType != "None" and not na(entryTP) and high >= entryTP
-            exitReason := "Take Profit"
-        else if useT3 and t3ExitLong
-            exitReason := "T3 Exit"
-        else if useWAE and waeExitLong
-            exitReason := "WAE Exit"
-        else if useTrendilio and trendilioExitLong
-            exitReason := "Trendilio Exit"
-        else if earlyExitProtection and close < earlyExitMA
-            exitReason := "Early Exit Protection"
+//         // Determine exit reason based on conditions
+//         if force_exit and useT3 and t3ExitLong
+//             exitReason := "T3 Force Exit"
+//         else if force_exit and useWAE and waeExitLong
+//             exitReason := "WAE Force Exit"
+//         else if force_exit and useTrendilio and trendilioExitLong
+//             exitReason := "Trendilio Force Exit"
+//         else if force_exit
+//             exitReason := "General Force Exit"
+//         else if not stopLossDisabled and not na(entrySL) and low <= entrySL
+//             exitReason := "Stop Loss"
+//         else if takeProfitType != "None" and not na(entryTP) and high >= entryTP
+//             exitReason := "Take Profit"
+//         else if useT3 and t3ExitLong
+//             exitReason := "T3 Exit"
+//         else if useWAE and waeExitLong
+//             exitReason := "WAE Exit"
+//         else if useTrendilio and trendilioExitLong
+//             exitReason := "Trendilio Exit"
+//         else if earlyExitProtection and close < earlyExitMA
+//             exitReason := "Early Exit Protection"
         
-        // Process exit with the determined reason
-        string alertMessage = getLongExitTemplate()
+//         // Process exit with the determined reason
+//         string alertMessage = getLongExitTemplate()
         
-        if useMinimalistBot
-            triggerAlert(alertMessage)
-        else
-            triggerAlert(i_alert_txt_exit_long)
-            if allowFunctionCallAlerts
-                string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
-                triggerAlert(formattedMessage)
+//         if useMinimalistBot
+//             triggerAlert(alertMessage)
+//         else
+//             triggerAlert(i_alert_txt_exit_long)
+//             if allowFunctionCallAlerts
+//                 string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
+//                 triggerAlert(formattedMessage)
         
-        // Position cleanup
-        alertSent_exit_long := true
-        lastExitBarIndex := bar_index
+//         // Position cleanup
+//         alertSent_exit_long := true
+//         lastExitBarIndex := bar_index
         
-        // Fix: Use the correct variable reference without the "Condition" suffix
-        if useTrendilio and trendilioExitLong
-            lastTrendilioExitBar := bar_index
+//         // Fix: Use the correct variable reference without the "Condition" suffix
+//         if useTrendilio and trendilioExitLong
+//             lastTrendilioExitBar := bar_index
         
-        waitForNewBarExit := true
-        currentPosition := "flat"
-        tradeActive := false
+//         waitForNewBarExit := true
+//         currentPosition := "flat"
+//         tradeActive := false
 
-    // Short exit alert
-    if shortExitCondition and canExecuteSignal and not alertSent_exit_short
-        // Use an appropriately named variable that doesn't shadow existing ones
-        string shortExitReason = "Exit Signal"  // Default reason
+//     // Short exit alert
+//     if shortExitCondition and canExecuteSignal and not alertSent_exit_short
+//         // Use an appropriately named variable that doesn't shadow existing ones
+//         string shortExitReason = "Exit Signal"  // Default reason
         
-        // Determine exit reason based on conditions
-        if force_exit and useT3 and t3ExitShort
-            shortExitReason := "T3 Force Exit"
-        else if force_exit and useWAE and waeExitShort
-            shortExitReason := "WAE Force Exit"
-        else if force_exit and useTrendilio and trendilioExitShort
-            shortExitReason := "Trendilio Force Exit"
-        else if force_exit
-            shortExitReason := "General Force Exit"
-        else if not stopLossDisabled and not na(entrySL) and high >= entrySL
-            shortExitReason := "Stop Loss"
-        else if takeProfitType != "None" and not na(entryTP) and low <= entryTP
-            shortExitReason := "Take Profit"
-        else if useT3 and t3ExitShort
-            shortExitReason := "T3 Exit"
-        else if useWAE and waeExitShort
-            shortExitReason := "WAE Exit"
-        else if useTrendilio and trendilioExitShort
-            shortExitReason := "Trendilio Exit"
-        else if earlyExitProtection and close > earlyExitMA
-            shortExitReason := "Early Exit Protection"
+//         // Determine exit reason based on conditions
+//         if force_exit and useT3 and t3ExitShort
+//             shortExitReason := "T3 Force Exit"
+//         else if force_exit and useWAE and waeExitShort
+//             shortExitReason := "WAE Force Exit"
+//         else if force_exit and useTrendilio and trendilioExitShort
+//             shortExitReason := "Trendilio Force Exit"
+//         else if force_exit
+//             shortExitReason := "General Force Exit"
+//         else if not stopLossDisabled and not na(entrySL) and high >= entrySL
+//             shortExitReason := "Stop Loss"
+//         else if takeProfitType != "None" and not na(entryTP) and low <= entryTP
+//             shortExitReason := "Take Profit"
+//         else if useT3 and t3ExitShort
+//             shortExitReason := "T3 Exit"
+//         else if useWAE and waeExitShort
+//             shortExitReason := "WAE Exit"
+//         else if useTrendilio and trendilioExitShort
+//             shortExitReason := "Trendilio Exit"
+//         else if earlyExitProtection and close > earlyExitMA
+//             shortExitReason := "Early Exit Protection"
         
-        // Process exit with the determined reason
-        string shortAlertMessage = getShortExitTemplate()
+//         // Process exit with the determined reason
+//         string shortAlertMessage = getShortExitTemplate()
         
-        if useMinimalistBot
-            triggerAlert(shortAlertMessage)
-        else
-            triggerAlert(i_alert_txt_entry_short)
+//         if useMinimalistBot
+//             triggerAlert(shortAlertMessage)
+//         else
+//             triggerAlert(i_alert_txt_entry_short)
             
-            if allowFunctionCallAlerts
-                string formattedMessage = formatAlertMessage(shortAlertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
-                triggerAlert(formattedMessage)
+//             if allowFunctionCallAlerts
+//                 string formattedMessage = formatAlertMessage(shortAlertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
+//                 triggerAlert(formattedMessage)
         
-        // Position cleanup
-        alertSent_exit_short := true
-        lastExitBarIndex := bar_index
+//         // Position cleanup
+//         alertSent_exit_short := true
+//         lastExitBarIndex := bar_index
         
-        if useTrendilio and trendilioExitShort
-            lastTrendilioExitBar := bar_index
+//         if useTrendilio and trendilioExitShort
+//             lastTrendilioExitBar := bar_index
         
-        waitForNewBarExit := true
-        currentPosition := "flat"
-        tradeActive := false
+//         waitForNewBarExit := true
+//         currentPosition := "flat"
+//         tradeActive := false
 
-    // ----------------------
-    // SPECIAL CASE ALERTS
-    // ----------------------
-    // Planetary Hour Force Exit Alerts
-    if useForceExit and usePlanetaryFilter and tradeActive and bar_index > lastEntryCandle + forceExitWaitBars and canExecuteSignal
-        if isLong and strategy.position_size > 0 and forceExitLongPlanet != "None" and isPlanetHour(forceExitLongPlanet) and not alertSent_exit_long
-            // First, get the correct alert message format
-            string alertMessage = getLongExitTemplate()
+//     // ----------------------
+//     // SPECIAL CASE ALERTS
+//     // ----------------------
+//     // Planetary Hour Force Exit Alerts
+//     if useForceExit and usePlanetaryFilter and tradeActive and bar_index > lastEntryCandle + forceExitWaitBars and canExecuteSignal
+//         if isLong and strategy.position_size > 0 and forceExitLongPlanet != "None" and isPlanetHour(forceExitLongPlanet) and not alertSent_exit_long
+//             // First, get the correct alert message format
+//             string alertMessage = getLongExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(alertMessage)
-            else
-                triggerAlert(i_alert_txt_exit_long)
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(alertMessage)
+//             else
+//                 triggerAlert(i_alert_txt_exit_long)
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
-                    triggerAlert(formattedMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
+//                     triggerAlert(formattedMessage)
             
-            // Mark alert as sent
-            alertSent_exit_long := true
+//             // Mark alert as sent
+//             alertSent_exit_long := true
         
-        if not isLong and strategy.position_size < 0 and forceExitShortPlanet != "None" and isPlanetHour(forceExitShortPlanet) and not alertSent_exit_short
-            // First, get the correct alert message format
-            string alertMessage = getShortExitTemplate()
+//         if not isLong and strategy.position_size < 0 and forceExitShortPlanet != "None" and isPlanetHour(forceExitShortPlanet) and not alertSent_exit_short
+//             // First, get the correct alert message format
+//             string alertMessage = getShortExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(alertMessage)
-            else
-                // For Advanced Bot: Use custome Entry and Exit fields
-                triggerAlert(i_alert_txt_exit_short)
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(alertMessage)
+//             else
+//                 // For Advanced Bot: Use custome Entry and Exit fields
+//                 triggerAlert(i_alert_txt_exit_short)
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
-                    triggerAlert(formattedMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
+//                     triggerAlert(formattedMessage)
             
-            // Mark alert as sent
-            alertSent_exit_short := true
+//             // Mark alert as sent
+//             alertSent_exit_short := true
 
-    // ----------------------
-    // REVERSAL MODE ALERTS
-    // ----------------------
-    // Implement reversal mode alerts properly
-    if reversalMode and canExecuteSignal and not waitForNewBarEntry
-        // Reversal from Short to Long
-        if longTrades and longCondition and strategy.position_size < 0 and not alertSent_entry_long
-            // First handle the exit portion of the reversal
-            string exitAlertMessage = getShortExitTemplate()
+//     // ----------------------
+//     // REVERSAL MODE ALERTS
+//     // ----------------------
+//     // Implement reversal mode alerts properly
+//     if reversalMode and canExecuteSignal and not waitForNewBarEntry
+//         // Reversal from Short to Long
+//         if longTrades and longCondition and strategy.position_size < 0 and not alertSent_entry_long
+//             // First handle the exit portion of the reversal
+//             string exitAlertMessage = getShortExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(exitAlertMessage)
-            else
-                // For Advanced Bot: Use custome Entry and Exit fields
-                triggerAlert(i_alert_txt_exit_short)
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(exitAlertMessage)
+//             else
+//                 // For Advanced Bot: Use custome Entry and Exit fields
+//                 triggerAlert(i_alert_txt_exit_short)
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedExitMessage = formatAlertMessage(exitAlertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
-                    triggerAlert(formattedExitMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedExitMessage = formatAlertMessage(exitAlertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
+//                     triggerAlert(formattedExitMessage)
             
-            // Mark exit alert as sent
-            alertSent_exit_short := true
+//             // Mark exit alert as sent
+//             alertSent_exit_short := true
             
-            // Then handle the entry portion of the reversal
-            string entryAlertMessage = getLongEntryTemplate()
+//             // Then handle the entry portion of the reversal
+//             string entryAlertMessage = getLongEntryTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.entry)
-                triggerAlert(entryAlertMessage)
-            else
-                // For Advanced Bot: Use Custom Entry and Exit fields
-                triggerAlert(i_alert_txt_entry_long )
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.entry)
+//                 triggerAlert(entryAlertMessage)
+//             else
+//                 // For Advanced Bot: Use Custom Entry and Exit fields
+//                 triggerAlert(i_alert_txt_entry_long )
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedEntryMessage = formatAlertMessage(entryAlertMessage, roundedQty, close, tpLong, slLong, "Buy")
-                    triggerAlert(formattedEntryMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedEntryMessage = formatAlertMessage(entryAlertMessage, roundedQty, close, tpLong, slLong, "Buy")
+//                     triggerAlert(formattedEntryMessage)
             
-            // Mark entry alert as sent
-            alertSent_entry_long := true
+//             // Mark entry alert as sent
+//             alertSent_entry_long := true
         
-        // Reversal from Long to Short
-        if shortTrades and shortCondition and strategy.position_size > 0 and not alertSent_entry_short
-            // First handle the exit portion of the reversal
-            string exitAlertMessage = getLongExitTemplate()
+//         // Reversal from Long to Short
+//         if shortTrades and shortCondition and strategy.position_size > 0 and not alertSent_entry_short
+//             // First handle the exit portion of the reversal
+//             string exitAlertMessage = getLongExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(exitAlertMessage)
-            else
-                // For Advanced Bot: Use custome Entry and Exit fields
-                triggerAlert(i_alert_txt_exit_long )
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(exitAlertMessage)
+//             else
+//                 // For Advanced Bot: Use custome Entry and Exit fields
+//                 triggerAlert(i_alert_txt_exit_long )
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedExitMessage = formatAlertMessage(exitAlertMessage, strategy.position_size, close, 0, 0, "Sell")
-                    triggerAlert(formattedExitMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedExitMessage = formatAlertMessage(exitAlertMessage, strategy.position_size, close, 0, 0, "Sell")
+//                     triggerAlert(formattedExitMessage)
             
-            // Mark exit alert as sent
-            alertSent_exit_long := true
+//             // Mark exit alert as sent
+//             alertSent_exit_long := true
             
-            // Then handle the entry portion of the reversal
-            string entryAlertMessage = getShortEntryTemplate()
+//             // Then handle the entry portion of the reversal
+//             string entryAlertMessage = getShortEntryTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.entry)
-                triggerAlert(entryAlertMessage)
-            else
-                // For Advanced Bot: Use Custom Entry and Exit fields
-                triggerAlert(i_alert_txt_entry_short )
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.entry)
+//                 triggerAlert(entryAlertMessage)
+//             else
+//                 // For Advanced Bot: Use Custom Entry and Exit fields
+//                 triggerAlert(i_alert_txt_entry_short )
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedEntryMessage = formatAlertMessage(entryAlertMessage, roundedQty, close, tpShort, slShort, "Sell")
-                    triggerAlert(formattedEntryMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedEntryMessage = formatAlertMessage(entryAlertMessage, roundedQty, close, tpShort, slShort, "Sell")
+//                     triggerAlert(formattedEntryMessage)
             
-            // Mark entry alert as sent
-            alertSent_entry_short := true
+//             // Mark entry alert as sent
+//             alertSent_entry_short := true
 
-    // ----------------------
-    // MULTI TAKE PROFIT ALERTS
-    // ----------------------
-    // Implement multi take profit alerts
-    if useMultiTP and tradeActive and bar_index > lastEntryCandle and canExecuteSignal
-        // Skip take profits if we're in reversal mode with opposite signal
-        bool skipTP = reversalMode and ((isLong and shortCondition) or (not isLong and longCondition))
+//     // ----------------------
+//     // MULTI TAKE PROFIT ALERTS
+//     // ----------------------
+//     // Implement multi take profit alerts
+//     if useMultiTP and tradeActive and bar_index > lastEntryCandle and canExecuteSignal
+//         // Skip take profits if we're in reversal mode with opposite signal
+//         bool skipTP = reversalMode and ((isLong and shortCondition) or (not isLong and longCondition))
         
-        if not skipTP
-            if isLong and strategy.position_size > 0
-                // Check if stop loss is hit first
-                if not stopLossDisabled and not na(entrySL) and low <= entrySL and not alertSent_exit_long
-                    string alertMessage = getLongExitTemplate()
+//         if not skipTP
+//             if isLong and strategy.position_size > 0
+//                 // Check if stop loss is hit first
+//                 if not stopLossDisabled and not na(entrySL) and low <= entrySL and not alertSent_exit_long
+//                     string alertMessage = getLongExitTemplate()
                     
-                    if useMinimalistBot
-                        // For Minimalist Bot: send only the alert (without strategy.close)
-                        triggerAlert(alertMessage)
-                    else
-                        // For Advanced Bot: Use custome Entry and Exit fields                      
-                        triggerAlert(i_alert_txt_exit_long )
+//                     if useMinimalistBot
+//                         // For Minimalist Bot: send only the alert (without strategy.close)
+//                         triggerAlert(alertMessage)
+//                     else
+//                         // For Advanced Bot: Use custome Entry and Exit fields                      
+//                         triggerAlert(i_alert_txt_exit_long )
                         
-                        // If we also need custom alerts beyond strategy alerts
-                        if allowFunctionCallAlerts
-                            // Format the message correctly if it's not a MinimalistBot format
-                            string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
-                            triggerAlert(formattedMessage)
+//                         // If we also need custom alerts beyond strategy alerts
+//                         if allowFunctionCallAlerts
+//                             // Format the message correctly if it's not a MinimalistBot format
+//                             string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
+//                             triggerAlert(formattedMessage)
                     
-                    // Mark alert as sent
-                    alertSent_exit_long := true
-                else
-                    // TP1 for long positions
-                    if tp1Enabled and not tp1Reached and high >= tp1Price and bar_index != lastExitBarIndex and not alertSent_tp1_long
-                        float tpQty = roundedQty * (tp1Percent / 100)
-                        tpQty := math.max(f_round_qty(tpQty), 0.01)
+//                     // Mark alert as sent
+//                     alertSent_exit_long := true
+//                 else
+//                     // TP1 for long positions
+//                     if tp1Enabled and not tp1Reached and high >= tp1Price and bar_index != lastExitBarIndex and not alertSent_tp1_long
+//                         float tpQty = roundedQty * (tp1Percent / 100)
+//                         tpQty := math.max(f_round_qty(tpQty), 0.01)
                         
-                        string alertMessage = getTP1LongTemplate()
+//                         string alertMessage = getTP1LongTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy order)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: execute strategy.order (which will generate its own alert)
-                            alert_message_tp1_long := useMinimalistBot ? generateAlertJson("sell", tpQty, tp1Price, 0, 0, true) : i_alert_txt_tp1_long 
-                            strategy.order("TP1 Hit", strategy.short, qty=tpQty, alert_message=alert_message_tp1_long)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy order)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: execute strategy.order (which will generate its own alert)
+//                             alert_message_tp1_long := useMinimalistBot ? generateAlertJson("sell", tpQty, tp1Price, 0, 0, true) : i_alert_txt_tp1_long 
+//                             strategy.order("TP1 Hit", strategy.short, qty=tpQty, alert_message=alert_message_tp1_long)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp1Price, 0, 0, "Sell")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp1Price, 0, 0, "Sell")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP1 alert as sent and update status
-                        tp1Reached := true
-                        alertSent_tp1_long := true
+//                         // Mark TP1 alert as sent and update status
+//                         tp1Reached := true
+//                         alertSent_tp1_long := true
                     
-                    // TP2 for long positions
-                    if tp2Enabled and not tp2Reached and high >= tp2Price and bar_index != lastExitBarIndex and not alertSent_tp2_long
-                        float tpQty = roundedQty * (tp2Percent / 100)
-                        tpQty := math.max(f_round_qty(tpQty), 0.01)
+//                     // TP2 for long positions
+//                     if tp2Enabled and not tp2Reached and high >= tp2Price and bar_index != lastExitBarIndex and not alertSent_tp2_long
+//                         float tpQty = roundedQty * (tp2Percent / 100)
+//                         tpQty := math.max(f_round_qty(tpQty), 0.01)
                         
-                        string alertMessage = getTP2LongTemplate()
+//                         string alertMessage = getTP2LongTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy order)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: execute strategy.order (which will generate its own alert)
-                            alert_message_tp2_long := useMinimalistBot ? generateAlertJson("sell", tpQty, tp2Price, 0, 0, true) : i_alert_txt_tp2_long
-                            strategy.order("TP2 Hit", strategy.short, qty=tpQty, alert_message=alert_message_tp2_long)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy order)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: execute strategy.order (which will generate its own alert)
+//                             alert_message_tp2_long := useMinimalistBot ? generateAlertJson("sell", tpQty, tp2Price, 0, 0, true) : i_alert_txt_tp2_long
+//                             strategy.order("TP2 Hit", strategy.short, qty=tpQty, alert_message=alert_message_tp2_long)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp2Price, 0, 0, "Sell")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp2Price, 0, 0, "Sell")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP2 alert as sent and update status
-                        tp2Reached := true
-                        alertSent_tp2_long := true
+//                         // Mark TP2 alert as sent and update status
+//                         tp2Reached := true
+//                         alertSent_tp2_long := true
                     
-                    // TP3 for long positions (final take profit)
-                    if not tp3Reached and high >= tp3Price and bar_index != lastExitBarIndex and not alertSent_tp3_long
-                        string alertMessage = getTP3LongTemplate()
+//                     // TP3 for long positions (final take profit)
+//                     if not tp3Reached and high >= tp3Price and bar_index != lastExitBarIndex and not alertSent_tp3_long
+//                         string alertMessage = getTP3LongTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy close)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: Use custome Entry and Exit fields                           
-                            triggerAlert(i_alert_txt_exit_long)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy close)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: Use custome Entry and Exit fields                           
+//                             triggerAlert(i_alert_txt_exit_long)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, tp3Price, 0, 0, "Sell")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, tp3Price, 0, 0, "Sell")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP3 alert as sent and update status
-                        tp3Reached := true
-                        alertSent_tp3_long := true
-                        // Also set exit status since this is a full close
-                        alertSent_exit_long := true
+//                         // Mark TP3 alert as sent and update status
+//                         tp3Reached := true
+//                         alertSent_tp3_long := true
+//                         // Also set exit status since this is a full close
+//                         alertSent_exit_long := true
                     
-            else if not isLong and strategy.position_size < 0
-                // Check if stop loss is hit first
-                if not stopLossDisabled and not na(entrySL) and high >= entrySL and not alertSent_exit_short
-                    string alertMessage = getShortExitTemplate()
+//             else if not isLong and strategy.position_size < 0
+//                 // Check if stop loss is hit first
+//                 if not stopLossDisabled and not na(entrySL) and high >= entrySL and not alertSent_exit_short
+//                     string alertMessage = getShortExitTemplate()
                     
-                    if useMinimalistBot
-                        // For Minimalist Bot: send only the alert (without strategy.close)
-                        triggerAlert(alertMessage)
-                    else
-                        // For Advanced Bot: Use custome Entry and Exit fields
-                        triggerAlert(i_alert_txt_exit_short)
+//                     if useMinimalistBot
+//                         // For Minimalist Bot: send only the alert (without strategy.close)
+//                         triggerAlert(alertMessage)
+//                     else
+//                         // For Advanced Bot: Use custome Entry and Exit fields
+//                         triggerAlert(i_alert_txt_exit_short)
                         
-                        // If we also need custom alerts beyond strategy alerts
-                        if allowFunctionCallAlerts
-                            // Format the message correctly if it's not a MinimalistBot format
-                            string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
-                            triggerAlert(formattedMessage)
+//                         // If we also need custom alerts beyond strategy alerts
+//                         if allowFunctionCallAlerts
+//                             // Format the message correctly if it's not a MinimalistBot format
+//                             string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
+//                             triggerAlert(formattedMessage)
                     
-                    // Mark alert as sent
-                    alertSent_exit_short := true
-                else
-                    // TP1 for short positions
-                    if tp1Enabled and not tp1Reached and low <= tp1Price and bar_index != lastExitBarIndex and not alertSent_tp1_short
-                        float tpQty = roundedQty * (tp1Percent / 100)
-                        tpQty := math.max(f_round_qty(tpQty), 0.01)
+//                     // Mark alert as sent
+//                     alertSent_exit_short := true
+//                 else
+//                     // TP1 for short positions
+//                     if tp1Enabled and not tp1Reached and low <= tp1Price and bar_index != lastExitBarIndex and not alertSent_tp1_short
+//                         float tpQty = roundedQty * (tp1Percent / 100)
+//                         tpQty := math.max(f_round_qty(tpQty), 0.01)
                         
-                        string alertMessage = getTP1ShortTemplate()
+//                         string alertMessage = getTP1ShortTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy order)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: execute strategy.order (which will generate its own alert)
-                            alert_message_tp1_short := useMinimalistBot ? generateAlertJson("buy", tpQty, tp1Price, 0, 0, false) : i_alert_txt_tp1_short 
-                            strategy.order("TP1 Hit", strategy.long, qty=tpQty, alert_message=alert_message_tp1_short)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy order)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: execute strategy.order (which will generate its own alert)
+//                             alert_message_tp1_short := useMinimalistBot ? generateAlertJson("buy", tpQty, tp1Price, 0, 0, false) : i_alert_txt_tp1_short 
+//                             strategy.order("TP1 Hit", strategy.long, qty=tpQty, alert_message=alert_message_tp1_short)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp1Price, 0, 0, "Buy")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp1Price, 0, 0, "Buy")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP1 alert as sent and update status
-                        tp1Reached := true
-                        alertSent_tp1_short := true
+//                         // Mark TP1 alert as sent and update status
+//                         tp1Reached := true
+//                         alertSent_tp1_short := true
                     
-                    // TP2 for short positions
-                    if tp2Enabled and not tp2Reached and low <= tp2Price and bar_index != lastExitBarIndex and not alertSent_tp2_short
-                        float tpQty = roundedQty * (tp2Percent / 100)
-                        tpQty := math.max(f_round_qty(tpQty), 0.01)
+//                     // TP2 for short positions
+//                     if tp2Enabled and not tp2Reached and low <= tp2Price and bar_index != lastExitBarIndex and not alertSent_tp2_short
+//                         float tpQty = roundedQty * (tp2Percent / 100)
+//                         tpQty := math.max(f_round_qty(tpQty), 0.01)
                         
-                        string alertMessage = getTP2ShortTemplate()
+//                         string alertMessage = getTP2ShortTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy order)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: execute strategy.order (which will generate its own alert)
-                            alert_message_tp2_short := useMinimalistBot ? generateAlertJson("buy", tpQty, tp2Price, 0, 0, false) : i_alert_txt_tp2_short 
-                            strategy.order("TP2 Hit", strategy.long, qty=tpQty, alert_message=alert_message_tp2_short)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy order)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: execute strategy.order (which will generate its own alert)
+//                             alert_message_tp2_short := useMinimalistBot ? generateAlertJson("buy", tpQty, tp2Price, 0, 0, false) : i_alert_txt_tp2_short 
+//                             strategy.order("TP2 Hit", strategy.long, qty=tpQty, alert_message=alert_message_tp2_short)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp2Price, 0, 0, "Buy")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, tpQty, tp2Price, 0, 0, "Buy")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP2 alert as sent and update status
-                        tp2Reached := true
-                        alertSent_tp2_short := true
+//                         // Mark TP2 alert as sent and update status
+//                         tp2Reached := true
+//                         alertSent_tp2_short := true
                     
-                    // TP3 for short positions (final take profit)
-                    if not tp3Reached and low <= tp3Price and bar_index != lastExitBarIndex and not alertSent_tp3_short
-                        string alertMessage = getTP3ShortTemplate()
+//                     // TP3 for short positions (final take profit)
+//                     if not tp3Reached and low <= tp3Price and bar_index != lastExitBarIndex and not alertSent_tp3_short
+//                         string alertMessage = getTP3ShortTemplate()
                         
-                        if useMinimalistBot
-                            // For Minimalist Bot: send only the alert (without strategy close)
-                            triggerAlert(alertMessage)
-                        else
-                            // For Advanced Bot: Use custome Entry and Exit fields
-                            triggerAlert(i_alert_txt_tp3_short)
+//                         if useMinimalistBot
+//                             // For Minimalist Bot: send only the alert (without strategy close)
+//                             triggerAlert(alertMessage)
+//                         else
+//                             // For Advanced Bot: Use custome Entry and Exit fields
+//                             triggerAlert(i_alert_txt_tp3_short)
                             
-                            // If we also need custom alerts beyond strategy alerts
-                            if allowFunctionCallAlerts
-                                // Format the message correctly if it's not a MinimalistBot format
-                                string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), tp3Price, 0, 0, "Buy")
-                                triggerAlert(formattedMessage)
+//                             // If we also need custom alerts beyond strategy alerts
+//                             if allowFunctionCallAlerts
+//                                 // Format the message correctly if it's not a MinimalistBot format
+//                                 string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), tp3Price, 0, 0, "Buy")
+//                                 triggerAlert(formattedMessage)
                         
-                        // Mark TP3 alert as sent and update status
-                        tp3Reached := true
-                        alertSent_tp3_short := true
-                        // Also set exit status since this is a full close
-                        alertSent_exit_short := true
+//                         // Mark TP3 alert as sent and update status
+//                         tp3Reached := true
+//                         alertSent_tp3_short := true
+//                         // Also set exit status since this is a full close
+//                         alertSent_exit_short := true
                     
-    // ----------------------
-    // END OF SESSION ALERTS
-    // ----------------------
-    // Implement end of session alerts
-    if useSessions and isEndOfSession() and tradeActive and canExecuteSignal
-        // Close long position at end of session
-        if isLong and strategy.position_size > 0 and not alertSent_exit_long
-            string alertMessage = getLongExitTemplate()
+//     // ----------------------
+//     // END OF SESSION ALERTS
+//     // ----------------------
+//     // Implement end of session alerts
+//     if useSessions and isEndOfSession() and tradeActive and canExecuteSignal
+//         // Close long position at end of session
+//         if isLong and strategy.position_size > 0 and not alertSent_exit_long
+//             string alertMessage = getLongExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(alertMessage)
-            else
-                // For Advanced Bot: Use custome Entry and Exit fields
-                triggerAlert(i_alert_txt_exit_long )
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(alertMessage)
+//             else
+//                 // For Advanced Bot: Use custome Entry and Exit fields
+//                 triggerAlert(i_alert_txt_exit_long )
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
-                    triggerAlert(formattedMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedMessage = formatAlertMessage(alertMessage, strategy.position_size, close, 0, 0, "Sell")
+//                     triggerAlert(formattedMessage)
             
-            // Mark alert as sent
-            alertSent_exit_long := true
+//             // Mark alert as sent
+//             alertSent_exit_long := true
         
-        // Close short position at end of session
-        if not isLong and strategy.position_size < 0 and not alertSent_exit_short
-            string alertMessage = getShortExitTemplate()
+//         // Close short position at end of session
+//         if not isLong and strategy.position_size < 0 and not alertSent_exit_short
+//             string alertMessage = getShortExitTemplate()
             
-            if useMinimalistBot
-                // For Minimalist Bot: send only the alert (without strategy.close)
-                triggerAlert(alertMessage)
-            else
-                // For Advanced Bot: Use custome Entry and Exit fields
-                triggerAlert(i_alert_txt_exit_short)
+//             if useMinimalistBot
+//                 // For Minimalist Bot: send only the alert (without strategy.close)
+//                 triggerAlert(alertMessage)
+//             else
+//                 // For Advanced Bot: Use custome Entry and Exit fields
+//                 triggerAlert(i_alert_txt_exit_short)
                 
-                // If we also need custom alerts beyond strategy alerts
-                if allowFunctionCallAlerts
-                    // Format the message correctly if it's not a MinimalistBot format
-                    string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
-                    triggerAlert(formattedMessage)
+//                 // If we also need custom alerts beyond strategy alerts
+//                 if allowFunctionCallAlerts
+//                     // Format the message correctly if it's not a MinimalistBot format
+//                     string formattedMessage = formatAlertMessage(alertMessage, math.abs(strategy.position_size), close, 0, 0, "Buy")
+//                     triggerAlert(formattedMessage)
             
-            // Mark alert as sent
-            alertSent_exit_short := true
+//             // Mark alert as sent
+//             alertSent_exit_short := true
              
 //------------------
 // MONTHLY PNL LOGIC 
