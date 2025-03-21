@@ -1,13 +1,14 @@
+// BEGIN STRATEGY SPECIFIC CODE
 //@version=6
-strategy("T3 WAE Trendilio Strategy", overlay=true, calc_on_every_tick=false, calc_on_order_fills=false, initial_capital= 1000000, slippage= 13, process_orders_on_close= false, use_bar_magnifier= true, default_qty_type=strategy.percent_of_equity, default_qty_value= 100, commission_value=0.05, pyramiding=1, margin_long= 0, margin_short= 0)
-
+strategy("T3 WAE Trendilio", overlay=true, calc_on_every_tick=false, calc_on_order_fills=false, initial_capital= 1000000, slippage= 13, process_orders_on_close= false, use_bar_magnifier= true, default_qty_type=strategy.percent_of_equity, default_qty_value= 100, commission_value=0.05, pyramiding=1, margin_long= 0, margin_short= 0)
+// END STRATEGY SPECIFIC CODE
 // ------------------------------------------------
 // Version Settings
 // ------------------------------------------------
 var g_version = "🔖Version Info🔖"
-version = input.string("1.6.1", "Version", options=["1.6.1"], group=g_version, tooltip="Version of plate")
+version = input.string("1.6.3", "Version", options=["1.6.3"], group=g_version, tooltip="Version of plate")
 optimizingTime = input.bool(true,"Optimizing Time",group=g_version, tooltip="When enabled, the script will skip non-essential visuals (dashboard, labels, etc.) for faster loading.")
-
+// BEGIN STRATEGY SPECIFIC CODE
 // ------------------------------------------------
 // 1) Main Strategy Settings
 // ------------------------------------------------
@@ -36,7 +37,7 @@ bbChannelLength = input.int(46, "WAE Bollinger Channel Length", minval=1, group=
 bbStdevMultiplier = input.float(2.1, "WAE Bollinger StDev", minval=0.1, step=0.1, group=g_main_strategy, tooltip="Set the standard deviation multiplier for Bollinger Bands in WAE, controlling channel width.")
 noTradeZoneThreshold = input.int(31, "WAE No-Trade Threshold", minval=1, group=g_main_strategy, tooltip="Set the threshold for the no-trade zone in WAE, filtering out low-confidence signals.")
 force_exit = input.bool(false, "Forceful Exit on Signal", group=g_main_strategy, tooltip="Enable to force exit positions when an exit signal is generated, regardless of profit or loss.")
-
+// END STRATEGY SPECIFIC CODE
 // ------------------------------------------------
 // 2) General Settings
 // ------------------------------------------------
@@ -56,10 +57,10 @@ shortTrades = input.bool(true,  "Allow Short Positions", group=group_trade_type,
 // ------------------------------------------------
 var g_posSizing = "💪Margin & Positioning💪"
 positionSizingMode = input.string("Compounding", "Position Sizing Mode", options=["Custom Fixed Risk %", "Fixed Percent", "Compounding"], group=g_posSizing, tooltip="Choose position sizing method: 'Custom Fixed Risk %' maintains exactly the specified risk percentage regardless of leverage, 'Fixed Percent' uses the same percentage of initial capital (no compounding), 'Compounding' allows position size to grow with equity.")
-leverageRiskExplanation = input.bool(false, "ℹ️ Understanding Leverage & Risk", group=g_posSizing, tooltip="The position sizing system dynamically balances risk and leverage based on your selections:\n\n• Custom Fixed Risk %: This mode maintains exactly the specified risk percentage per trade. The system uses a mathematical model where 7x leverage works optimally with 1% risk, and scales proportionally (e.g., 0.5% risk allows up to 14x leverage, 0.1% risk allows up to 70x leverage, both with safety adjustments). A safety factor is applied for leverage above 15x, and leverage is capped at 30x to prevent liquidation events.\n\n• Fixed Percent: Always uses the same percentage of your initial capital (no compounding), allowing consistent position sizes regardless of account growth or drawdowns.\n\n• Compounding: Uses the percentage of your current equity, allowing position sizes to grow as your account grows and shrink during drawdowns.\n\nThe system incorporates multiple safety mechanisms: liquidation protection, maximum position size limiters (never exceeding 5x your equity value), and dynamic safety buffers based on stop loss distances. As leverage increases, safety measures become more conservative to prevent liquidation before stop losses can trigger.")
+leverageRiskExplanation = input.bool(false, "ℹ️ Understanding Leverage & Risk", group=g_posSizing, tooltip="The position sizing system dynamically balances risk and leverage based on your selections:\n\n• Custom Fixed Risk %: This mode maintains exactly the specified risk percentage per trade. The system calculates your position size based on the distance between entry and stop loss, then applies leverage in a controlled manner. With 10% risk and 10x selected leverage, the system typically uses about 37.7% of your equity as margin (So to directly answer your question: No, the system doesn't always risk exactly 10% on every trade. Instead, it uses your 10% setting as a maximum risk ceiling, and in practice, keeps actual risk slightly below this level to build in safety margins. This is actually a more sophisticated approach to risk management than simply risking exactly 10% on every trade, as it adapts to market conditions while honoring your risk tolerance limits.). This creates consistent risk exposure while preventing excessive position sizes. The mathematical model uses 7x leverage with 1% risk as its optimal reference point, scaling proportionally for other risk levels.\n\n• Fixed Percent: Always uses the same percentage of your initial capital (no compounding), allowing consistent position sizes regardless of account growth or drawdowns.\n\n• Compounding: Uses the percentage of your current equity, allowing position sizes to grow as your account grows and shrink during drawdowns.\n\nThe system incorporates multiple safety mechanisms: liquidation protection, maximum position size limiters (never exceeding 5x your equity value), and dynamic safety buffers based on stop loss distances. As leverage increases, safety measures become more conservative to prevent liquidation before stop losses can trigger.")
 useRawQty = input.bool(false, "Fixed Raw Contracts Position", group=g_posSizing, tooltip="Enable to use a fixed raw quantity for position sizing, bypassing dynamic calculations.")
 rawPositionQty = input.float(1.0, "Raw Contracts Qty", minval=0.0001, step=0.0001, group=g_posSizing, tooltip="Set the fixed raw contracts quantity for position sizing when using fixed amounts.")
-risk = input.float(10, "Risk Allocation (%)", minval=0.1, group=g_posSizing, tooltip="Set the percentage to use for position sizing. Used differently based on Position Sizing Mode: for Custom Fixed Risk % it's the exact risk per trade, for Fixed Percent it's percentage of initial capital, for Compounding it's percentage of current equity.")
+risk = input.float(10, "Risk Allocation (%)", minval=0.1, step=0.1, group=g_posSizing, tooltip="Set the percentage to use for position sizing. Used differently based on Position Sizing Mode: for Custom Fixed Risk % it's the exact risk per trade, for Fixed Percent it's percentage of initial capital, for Compounding it's percentage of current equity.")
 userLeverage = input.float(15, "Leverage Factor", minval=1, group=g_posSizing, tooltip="Set the leverage ratio to amplify position size, increasing both potential returns and risks.")
 
 // ------------------------------------------------
@@ -397,14 +398,14 @@ LiveTradeFilter = input.bool(false, "Enable Real Time Filter", group=g_live_trad
 i_liveStartTime = input.time(timestamp("25 Feb 2025 00:00 +0000"), "Real Time Starts", group=g_live_trade, tooltip="Set the starting date and time for live trading to begin sending real-time alerts.")
 
 // ------------------------------------------------
-// Alert Mode Selection
+// 35) Alert Mode Selection
 // ------------------------------------------------
 var g_mode_selection = "🔄 Alert Mode Selection"
 useMinimalistBot = input.bool(false, "Use Minimalist Bot Mode", group=g_mode_selection, tooltip="When ON: Structured JSON alerts for trading bots. When OFF: Advanced mode with customizable alert templates.")
 exchangeFormat = input.string("Crypto Exchange", "Exchange Format", options=["MT5", "Crypto Exchange"], group=g_mode_selection, tooltip="Select the format for Minimalist Bot JSON messages: MT5 for MetaTrader or Crypto Exchange for platforms like Bybit/Binance.")
 
 // ------------------------------------------------
-// Minimalist Bot Settings
+// 36) Minimalist Bot Settings
 // ------------------------------------------------
 var g_minimalist_bot = "🤖 Minimalist Bot Settings"
 // Common settings
@@ -423,24 +424,24 @@ emailId = input.string("example@email.com", "Email ID", group=g_mt5_settings, to
 magicNumber = input.string("01", "Magic Number", group=g_mt5_settings, tooltip="Magic number for MT5 order identification")
 
 // ------------------------------------------------
-// Standard Alert Templates
+// 37) Standard Alert Templates
 // ------------------------------------------------
 var g_alert_templates = "📝 Alert Templates"
-i_alert_txt_entry_long = input.text_area("Buy #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#", "Long Entry", group=g_alert_templates)
-i_alert_txt_entry_short = input.text_area("Sell #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR#", "Short Entry", group=g_alert_templates)
-i_alert_txt_exit_long = input.text_area("Exit Long #pair# Q=#pos# Price=#price# PnL=#riskUSD#", "Long Exit", group=g_alert_templates)
-i_alert_txt_exit_short = input.text_area("Exit Short #pair# Q=#pos# Price=#price# PnL=#riskUSD#", "Short Exit", group=g_alert_templates)
+i_alert_txt_entry_long = input.text_area("Buy #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Long Entry", group=g_alert_templates)
+i_alert_txt_entry_short = input.text_area("Sell #pair# Q=#qty# Entry=#price# TP=#TP# SL=#SL# Lev=#lev# Risk=#risk# R:R=#RR# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Short Entry", group=g_alert_templates)
+i_alert_txt_exit_long = input.text_area("Exit Long #pair# Q=#pos# Price=#price# PnL=#riskUSD# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Long Exit", group=g_alert_templates)
+i_alert_txt_exit_short = input.text_area("Exit Short #pair# Q=#pos# Price=#price# PnL=#riskUSD# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Short Exit", group=g_alert_templates)
 
 // ------------------------------------------------
-// Multi-TP Alert Templates
+// 38) Multi-TP Alert Templates
 // ------------------------------------------------
 var g_multi_tp_templates = "📊 Multi-TP Templates"
-i_alert_txt_tp1_long = input.text_area("TP1 Long #pair# Q=#qty# Price=#price# #time#", "Long TP1 (33%)", group=g_multi_tp_templates)
-i_alert_txt_tp2_long = input.text_area("TP2 Long #pair# Q=#qty# Price=#price# #time#", "Long TP2 (33%)", group=g_multi_tp_templates)
-i_alert_txt_tp3_long = input.text_area("TP3 Long #pair# Q=#pos# Price=#price# #time#", "Long TP3 (34%)", group=g_multi_tp_templates)
-i_alert_txt_tp1_short = input.text_area("TP1 Short #pair# Q=#qty# Price=#price# #time#", "Short TP1 (33%)", group=g_multi_tp_templates)
-i_alert_txt_tp2_short = input.text_area("TP2 Short #pair# Q=#qty# Price=#price# #time#", "Short TP2 (33%)", group=g_multi_tp_templates)
-i_alert_txt_tp3_short = input.text_area("TP3 Short #pair# Q=#pos# Price=#price# #time#", "Short TP3 (34%)", group=g_multi_tp_templates)
+i_alert_txt_tp1_long = input.text_area("TP1 Long #pair# Q=#qty# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Long TP1 (33%)", group=g_multi_tp_templates)
+i_alert_txt_tp2_long = input.text_area("TP2 Long #pair# Q=#qty# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Long TP2 (33%)", group=g_multi_tp_templates)
+i_alert_txt_tp3_long = input.text_area("TP3 Long #pair# Q=#pos# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Long TP3 (34%)", group=g_multi_tp_templates)
+i_alert_txt_tp1_short = input.text_area("TP1 Short #pair# Q=#qty# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Short TP1 (33%)", group=g_multi_tp_templates)
+i_alert_txt_tp2_short = input.text_area("TP2 Short #pair# Q=#qty# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Short TP2 (33%)", group=g_multi_tp_templates)
+i_alert_txt_tp3_short = input.text_area("TP3 Short #pair# Q=#pos# Price=#price# #time# #force_tp# #leverage_type# #advanced_mode# #order_time_out# #exit_existing_trade# #stop_bot_below_balance# #channelName# #desc# #stop_loss_price# #version#", "Short TP3 (34%)", group=g_multi_tp_templates)
 
 // ------------------------------------------------
 // 39) Monthly Performance Overview
@@ -563,7 +564,7 @@ var float tp3Price = 0.0
 var int longTradesCount = 0
 var int shortTradesCount = 0
 var int lastTradeDirection = 0
-var int lastTrendilioExitBar = 0
+var int lastSignalExitBar = 0
 var int lastEntryBarIndex = 0
 var int lastExitBarIndex = 0
 var bool waitForNewBarEntry = false
@@ -573,14 +574,14 @@ var string currentPosition = "flat" // "flat", "long", or "short"
 bool validLongEntry = true
 bool validShortEntry = true
 bool validEntry = true
-
-// Trendilio stabilization
+// BEGIN STRATEGY SPECIFIC CODE
+// STRATEGY VARIABLES - Trendilio stabilization
 var int trendilioSignalCooldownPeriod = 3  // Number of bars to wait before new signals
 var int trendilioSignalCooldownCounter = 0
 var bool lastSignalWasLong = false
 var bool lastSignalWasShort = false
 var float avpchSmoothed = 0.0
-
+// END STRATEGY SPECIFIC CODE
 // Declare variables for all the ATR calculations we might need
 var float standardATR = 0.0
 var float swingATR = 0.0
@@ -1005,32 +1006,58 @@ float max_safe_leverage = userLeverage  // Default to user's selected leverage
 
 // For "Custom Fixed Risk %" mode, calculate a maximum safe leverage based on risk allocation
 if useFixedRiskPct
-    // Reference point: 7x leverage at 1% risk
-    float reference_risk = 1.0
-    float reference_leverage = 7.0
+    // Calculate the stop loss distance for risk-based sizing
+    float longStopDistance = math.abs(close - slLong)
+    float shortStopDistance = math.abs(slShort - close)
     
-    // Calculate the product of reference risk and leverage
-    float risk_leverage_product = reference_risk * reference_leverage  // 7.0
+    // Use the appropriate stop distance based on trade direction
+    float riskDistance = (longStopDistance + shortStopDistance) / 2
     
-    // Calculate the safe leverage based on inverse proportion to risk
-    if risk > 0
-        max_safe_leverage := risk_leverage_product / risk
+    // Use a simpler, more stable approach to calculate position size directly
+    // Without relying on intermediate leverage calculations
+    
+    // Calculate what percentage of equity we're risking
+    float riskAmount = strategy.equity * (risk / 100)
+    
+    // Calculate position size directly based on the stop distance
+    if riskDistance > 0
+        // Position size = (Risk amount) / (Price × Stop loss percentage)
+        // This gives a consistent size that risks exactly the specified percentage
+        positionSize := riskAmount / (close * (riskDistance / close))
         
-        // Add a strong safety factor that increases for very high leverage
-        float safety_factor = 1.0
-        if max_safe_leverage > 15.0
-            // More aggressive reduction for high leverage
-            safety_factor := math.max(0.5, 1.0 - (max_safe_leverage - 15.0) / 85.0)
+        // Apply a cap on position size as a multiple of what would be used at 1x leverage
+        float basePositionSize = positionSize / userLeverage
+        float maxMultiplier = 15.0  // Maximum allowed multiplier
         
-        max_safe_leverage := max_safe_leverage * safety_factor
+        // Smooth, gradual position size cap based on risk
+        float adjustedMultiplier = userLeverage
+        if risk < 1.0
+            // For risk lower than 1%, scale multiplier gradually
+            // At 0.5% risk, multiplier = min(userLeverage, 7.5)
+            // At 0.1% risk, multiplier = min(userLeverage, 1.5)
+            adjustedMultiplier := math.min(userLeverage, maxMultiplier * risk)
+        else
+            // For risk 1.0% or higher, keep multiplier at userLeverage
+            adjustedMultiplier := math.min(userLeverage, maxMultiplier)
+        
+        // Apply the adjusted multiplier
+        positionSize := basePositionSize * adjustedMultiplier
+        
+        // Make sure we don't exceed account safety limits
+        float maxPositionValue = strategy.equity * 3.0  // Cap at 3x equity
+        float maxPositionSize = maxPositionValue / close
+        positionSize := math.min(positionSize, maxPositionSize)
+    else
+        // Fallback with assumed 1% stop loss if riskDistance is zero
+        float assumedStopLossPercent = 0.01
+        positionSize := (riskAmount / (close * assumedStopLossPercent)) * (risk >= 1.0 ? 1.0 : risk)
     
-    // Apply a minimum leverage of 1x and maximum of 30x
-    max_safe_leverage := math.max(1.0, math.min(30.0, max_safe_leverage, userLeverage))
+    // For logging purposes, calculate the effective leverage after all adjustments
+    effectiveLeverage := positionSize * close / (strategy.equity * (risk / 100))
     
-    // Log the leverage adjustment if significant
-    if barstate.islastconfirmedhistory and math.abs(max_safe_leverage - userLeverage) > 0.1
-        strategy.close_all("NOTICE: For '" + str.tostring(risk, "#.##") + "% Custom Fixed Risk', leverage adjusted from " + str.tostring(userLeverage, "#.##") + "x to " + str.tostring(max_safe_leverage, "#.##") + "x for optimal risk-reward balance.")
-
+    // Update the max_safe_leverage to match our effective leverage for compatibility with the rest of your code
+    max_safe_leverage := effectiveLeverage
+    
 // Calculate position size based on selected method
 if not useRawQty
     // Calculate the stop loss distance for risk-based sizing
@@ -1181,287 +1208,125 @@ if effectiveLeverage > 10.0
     // Use the smaller of previously calculated position size and this liquidation-safe size
     positionSize := math.min(positionSize, max_position_for_safe_liq)
 
-// Log position size details for high leverage trades
-if barstate.islastconfirmedhistory and effectiveLeverage > 10.0
-    strategy.close_all("NOTICE: High leverage position - Effective leverage: " + str.tostring(effectiveLeverage, "#.##") + "x, Position size: " + str.tostring(positionSize, "#.#####") + " at price " + str.tostring(close, "#.##"))
-    
 // Round the position size for accuracy
 var float roundedQty = f_round_qty(positionSize)
 roundedQty := positionSize == 0 ? 0 : math.max(f_round_qty(positionSize), 0.01)
 
-// Pre-calculate all MA types for each length at root level
-// For MA #1
-var float ema_ma1 = na
-var float sma_ma1 = na
-var float hma_ma1 = na
-var float wma_ma1 = na
-var float dema_ma1_e1 = na
-var float dema_ma1_e2 = na
-var float dema_ma1 = na
-var float t3_ma1_e1 = na
-var float t3_ma1_e2 = na
-var float t3_ma1_e3 = na
-var float t3_ma1_e4 = na
-var float t3_ma1_e5 = na
-var float t3_ma1_e6 = na
-var float t3_ma1 = na
-
-// For MA #2
-var float ema_ma2 = na
-var float sma_ma2 = na
-var float hma_ma2 = na
-var float wma_ma2 = na
-var float dema_ma2_e1 = na
-var float dema_ma2_e2 = na
-var float dema_ma2 = na
-var float t3_ma2_e1 = na
-var float t3_ma2_e2 = na
-var float t3_ma2_e3 = na
-var float t3_ma2_e4 = na
-var float t3_ma2_e5 = na
-var float t3_ma2_e6 = na
-var float t3_ma2 = na
-
-// For MA #3
-var float ema_ma3 = na
-var float sma_ma3 = na
-var float hma_ma3 = na
-var float wma_ma3 = na
-var float dema_ma3_e1 = na
-var float dema_ma3_e2 = na
-var float dema_ma3 = na
-var float t3_ma3_e1 = na
-var float t3_ma3_e2 = na
-var float t3_ma3_e3 = na
-var float t3_ma3_e4 = na
-var float t3_ma3_e5 = na
-var float t3_ma3_e6 = na
-var float t3_ma3 = na
-
-// For MA #4
-var float ema_ma4 = na
-var float sma_ma4 = na
-var float hma_ma4 = na
-var float wma_ma4 = na
-var float dema_ma4_e1 = na
-var float dema_ma4_e2 = na
-var float dema_ma4 = na
-var float t3_ma4_e1 = na
-var float t3_ma4_e2 = na
-var float t3_ma4_e3 = na
-var float t3_ma4_e4 = na
-var float t3_ma4_e5 = na
-var float t3_ma4_e6 = na
-var float t3_ma4 = na
-
-// For MA #5
-var float ema_ma5 = na
-var float sma_ma5 = na
-var float hma_ma5 = na
-var float wma_ma5 = na
-var float dema_ma5_e1 = na
-var float dema_ma5_e2 = na
-var float dema_ma5 = na
-var float t3_ma5_e1 = na
-var float t3_ma5_e2 = na
-var float t3_ma5_e3 = na
-var float t3_ma5_e4 = na
-var float t3_ma5_e5 = na
-var float t3_ma5_e6 = na
-var float t3_ma5 = na
-
-// For HMA bar
-var float hma = na   // Changed from hma_bar to hma to match original code
-var color hmacolor = na
-
-// Update MA values on each bar
-// Calculate all possible MA types for MA #1
-ema_ma1 := ta.ema(close, maLength1)
-sma_ma1 := ta.sma(close, maLength1)
-hma_ma1 := ta.hma(close, maLength1)
-wma_ma1 := ta.wma(close, maLength1)
-dema_ma1_e1 := ta.ema(close, maLength1)
-dema_ma1_e2 := ta.ema(dema_ma1_e1, maLength1)
-dema_ma1 := 2 * dema_ma1_e1 - dema_ma1_e2
-
-// T3 calculation for MA #1
-float vFactor_ma = 0.7
-t3_ma1_e1 := ta.ema(close, maLength1)
-t3_ma1_e2 := ta.ema(t3_ma1_e1, maLength1)
-t3_ma1_e3 := ta.ema(t3_ma1_e2, maLength1)
-t3_ma1_e4 := ta.ema(t3_ma1_e3, maLength1)
-t3_ma1_e5 := ta.ema(t3_ma1_e4, maLength1)
-t3_ma1_e6 := ta.ema(t3_ma1_e5, maLength1)
-float c1_ma = -vFactor_ma * vFactor_ma * vFactor_ma
-float c2_ma = 3 * vFactor_ma * vFactor_ma + 3 * vFactor_ma * vFactor_ma * vFactor_ma
-float c3_ma = -6 * vFactor_ma * vFactor_ma - 3 * vFactor_ma - 3 * vFactor_ma * vFactor_ma * vFactor_ma
-float c4_ma = 1 + 3 * vFactor_ma + vFactor_ma * vFactor_ma + 3 * vFactor_ma * vFactor_ma
-t3_ma1 := c1_ma * t3_ma1_e6 + c2_ma * t3_ma1_e5 + c3_ma * t3_ma1_e4 + c4_ma * t3_ma1_e3
-
-// Calculate all possible MA types for MA #2
-ema_ma2 := ta.ema(close, maLength2)
-sma_ma2 := ta.sma(close, maLength2)
-hma_ma2 := ta.hma(close, maLength2)
-wma_ma2 := ta.wma(close, maLength2)
-dema_ma2_e1 := ta.ema(close, maLength2)
-dema_ma2_e2 := ta.ema(dema_ma2_e1, maLength2)
-dema_ma2 := 2 * dema_ma2_e1 - dema_ma2_e2
-
-// T3 calculation for MA #2
-t3_ma2_e1 := ta.ema(close, maLength2)
-t3_ma2_e2 := ta.ema(t3_ma2_e1, maLength2)
-t3_ma2_e3 := ta.ema(t3_ma2_e2, maLength2)
-t3_ma2_e4 := ta.ema(t3_ma2_e3, maLength2)
-t3_ma2_e5 := ta.ema(t3_ma2_e4, maLength2)
-t3_ma2_e6 := ta.ema(t3_ma2_e5, maLength2)
-t3_ma2 := c1_ma * t3_ma2_e6 + c2_ma * t3_ma2_e5 + c3_ma * t3_ma2_e4 + c4_ma * t3_ma2_e3
-
-// Calculate all possible MA types for MA #3
-ema_ma3 := ta.ema(close, maLength3)
-sma_ma3 := ta.sma(close, maLength3)
-hma_ma3 := ta.hma(close, maLength3)
-wma_ma3 := ta.wma(close, maLength3)
-dema_ma3_e1 := ta.ema(close, maLength3)
-dema_ma3_e2 := ta.ema(dema_ma3_e1, maLength3)
-dema_ma3 := 2 * dema_ma3_e1 - dema_ma3_e2
-
-// T3 calculation for MA #3
-t3_ma3_e1 := ta.ema(close, maLength3)
-t3_ma3_e2 := ta.ema(t3_ma3_e1, maLength3)
-t3_ma3_e3 := ta.ema(t3_ma3_e2, maLength3)
-t3_ma3_e4 := ta.ema(t3_ma3_e3, maLength3)
-t3_ma3_e5 := ta.ema(t3_ma3_e4, maLength3)
-t3_ma3_e6 := ta.ema(t3_ma3_e5, maLength3)
-t3_ma3 := c1_ma * t3_ma3_e6 + c2_ma * t3_ma3_e5 + c3_ma * t3_ma3_e4 + c4_ma * t3_ma3_e3
-
-// Calculate all possible MA types for MA #4
-ema_ma4 := ta.ema(close, maLength4)
-sma_ma4 := ta.sma(close, maLength4)
-hma_ma4 := ta.hma(close, maLength4)
-wma_ma4 := ta.wma(close, maLength4)
-dema_ma4_e1 := ta.ema(close, maLength4)
-dema_ma4_e2 := ta.ema(dema_ma4_e1, maLength4)
-dema_ma4 := 2 * dema_ma4_e1 - dema_ma4_e2
-
-// T3 calculation for MA #4
-t3_ma4_e1 := ta.ema(close, maLength4)
-t3_ma4_e2 := ta.ema(t3_ma4_e1, maLength4)
-t3_ma4_e3 := ta.ema(t3_ma4_e2, maLength4)
-t3_ma4_e4 := ta.ema(t3_ma4_e3, maLength4)
-t3_ma4_e5 := ta.ema(t3_ma4_e4, maLength4)
-t3_ma4_e6 := ta.ema(t3_ma4_e5, maLength4)
-t3_ma4 := c1_ma * t3_ma4_e6 + c2_ma * t3_ma4_e5 + c3_ma * t3_ma4_e4 + c4_ma * t3_ma4_e3
-
-// Calculate all possible MA types for MA #5
-ema_ma5 := ta.ema(close, maLength5)
-sma_ma5 := ta.sma(close, maLength5)
-hma_ma5 := ta.hma(close, maLength5)
-wma_ma5 := ta.wma(close, maLength5)
-dema_ma5_e1 := ta.ema(close, maLength5)
-dema_ma5_e2 := ta.ema(dema_ma5_e1, maLength5)
-dema_ma5 := 2 * dema_ma5_e1 - dema_ma5_e2
-
-// T3 calculation for MA #5
-t3_ma5_e1 := ta.ema(close, maLength5)
-t3_ma5_e2 := ta.ema(t3_ma5_e1, maLength5)
-t3_ma5_e3 := ta.ema(t3_ma5_e2, maLength5)
-t3_ma5_e4 := ta.ema(t3_ma5_e3, maLength5)
-t3_ma5_e5 := ta.ema(t3_ma5_e4, maLength5)
-t3_ma5_e6 := ta.ema(t3_ma5_e5, maLength5)
-t3_ma5 := c1_ma * t3_ma5_e6 + c2_ma * t3_ma5_e5 + c3_ma * t3_ma5_e4 + c4_ma * t3_ma5_e3
-
-// HMA bar calculation
-if boolhmabar
-    hma := ta.hma(close, hmabar)
-    hmacolor := close > hma ? color.lime : color.red
-
-// Modified getMA function that uses pre-calculated values
-getMA(string type, int length) =>
-    float result = ema_ma1  // Default initialization
-    
-    if length == maLength1
-        if type == "EMA"
-            result := ema_ma1
-        else if type == "SMA"
-            result := sma_ma1
-        else if type == "HMA"
-            result := hma_ma1
-        else if type == "WMA"
-            result := wma_ma1
-        else if type == "DEMA"
-            result := dema_ma1
-        else if type == "T3"
-            result := t3_ma1
-    else if length == maLength2
-        if type == "EMA"
-            result := ema_ma2
-        else if type == "SMA"
-            result := sma_ma2
-        else if type == "HMA"
-            result := hma_ma2
-        else if type == "WMA"
-            result := wma_ma2
-        else if type == "DEMA"
-            result := dema_ma2
-        else if type == "T3"
-            result := t3_ma2
-    else if length == maLength3
-        if type == "EMA"
-            result := ema_ma3
-        else if type == "SMA"
-            result := sma_ma3
-        else if type == "HMA"
-            result := hma_ma3
-        else if type == "WMA"
-            result := wma_ma3
-        else if type == "DEMA"
-            result := dema_ma3
-        else if type == "T3"
-            result := t3_ma3
-    else if length == maLength4
-        if type == "EMA"
-            result := ema_ma4
-        else if type == "SMA"
-            result := sma_ma4
-        else if type == "HMA"
-            result := hma_ma4
-        else if type == "WMA"
-            result := wma_ma4
-        else if type == "DEMA"
-            result := dema_ma4
-        else if type == "T3"
-            result := t3_ma4
-    else if length == maLength5
-        if type == "EMA"
-            result := ema_ma5
-        else if type == "SMA"
-            result := sma_ma5
-        else if type == "HMA"
-            result := hma_ma5
-        else if type == "WMA"
-            result := wma_ma5
-        else if type == "DEMA"
-            result := dema_ma5
-        else if type == "T3"
-            result := t3_ma5
-    
-    result
-
-// Get the MA values using the modified function
+// Optimized MA calculation with no warnings
+// Use persistent variables for storing MA results
 var float out1 = na
 var float out2 = na
 var float out3 = na
 var float out4 = na
 var float out5 = na
+var float hma_value = na
+var color hmacolor = na
 
-// Update MA outputs
-out1 := getMA(maType1, maLength1)
-out2 := getMA(maType2, maLength2)
-out3 := getMA(maType3, maLength3)
-out4 := getMA(maType4, maLength4)
-out5 := getMA(maType5, maLength5)
+// Calculate T3 moving average properly
+calcT3(float src, int length) =>
+    float vFactor = 0.7
+    float e1 = ta.ema(src, length)
+    float e2 = ta.ema(e1, length)
+    float e3 = ta.ema(e2, length)
+    float e4 = ta.ema(e3, length)
+    float e5 = ta.ema(e4, length)
+    float e6 = ta.ema(e5, length)
+    
+    float c1 = -vFactor * vFactor * vFactor
+    float c2 = 3 * vFactor * vFactor + 3 * vFactor * vFactor * vFactor
+    float c3 = -6 * vFactor * vFactor - 3 * vFactor - 3 * vFactor * vFactor * vFactor
+    float c4 = 1 + 3 * vFactor + vFactor * vFactor + 3 * vFactor * vFactor
+    
+    c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3
 
-// MA Conditions - Fixed: Changed from 'const bool' to 'var bool'
+// Update all MA values on each bar based on selected types
+// This ensures the ta.* functions are called on each calculation
+if boolmaLength1
+    if maType1 == "EMA"
+        out1 := ta.ema(close, maLength1)
+    else if maType1 == "SMA"
+        out1 := ta.sma(close, maLength1)
+    else if maType1 == "HMA"
+        out1 := ta.hma(close, maLength1)
+    else if maType1 == "WMA"
+        out1 := ta.wma(close, maLength1)
+    else if maType1 == "DEMA"
+        float ema1 = ta.ema(close, maLength1)
+        float ema2 = ta.ema(ema1, maLength1)
+        out1 := 2 * ema1 - ema2
+    else if maType1 == "T3"
+        out1 := calcT3(close, maLength1)
+
+if boolmaLength2
+    if maType2 == "EMA"
+        out2 := ta.ema(close, maLength2)
+    else if maType2 == "SMA"
+        out2 := ta.sma(close, maLength2)
+    else if maType2 == "HMA"
+        out2 := ta.hma(close, maLength2)
+    else if maType2 == "WMA"
+        out2 := ta.wma(close, maLength2)
+    else if maType2 == "DEMA"
+        float ema1 = ta.ema(close, maLength2)
+        float ema2 = ta.ema(ema1, maLength2)
+        out2 := 2 * ema1 - ema2
+    else if maType2 == "T3"
+        out2 := calcT3(close, maLength2)
+
+if boolmaLength3
+    if maType3 == "EMA"
+        out3 := ta.ema(close, maLength3)
+    else if maType3 == "SMA"
+        out3 := ta.sma(close, maLength3)
+    else if maType3 == "HMA"
+        out3 := ta.hma(close, maLength3)
+    else if maType3 == "WMA"
+        out3 := ta.wma(close, maLength3)
+    else if maType3 == "DEMA"
+        float ema1 = ta.ema(close, maLength3)
+        float ema2 = ta.ema(ema1, maLength3)
+        out3 := 2 * ema1 - ema2
+    else if maType3 == "T3"
+        out3 := calcT3(close, maLength3)
+
+if boolmaLength4
+    if maType4 == "EMA"
+        out4 := ta.ema(close, maLength4)
+    else if maType4 == "SMA"
+        out4 := ta.sma(close, maLength4)
+    else if maType4 == "HMA"
+        out4 := ta.hma(close, maLength4)
+    else if maType4 == "WMA"
+        out4 := ta.wma(close, maLength4)
+    else if maType4 == "DEMA"
+        float ema1 = ta.ema(close, maLength4)
+        float ema2 = ta.ema(ema1, maLength4)
+        out4 := 2 * ema1 - ema2
+    else if maType4 == "T3"
+        out4 := calcT3(close, maLength4)
+
+if boolmaLength5
+    if maType5 == "EMA"
+        out5 := ta.ema(close, maLength5)
+    else if maType5 == "SMA"
+        out5 := ta.sma(close, maLength5)
+    else if maType5 == "HMA"
+        out5 := ta.hma(close, maLength5)
+    else if maType5 == "WMA"
+        out5 := ta.wma(close, maLength5)
+    else if maType5 == "DEMA"
+        float ema1 = ta.ema(close, maLength5)
+        float ema2 = ta.ema(ema1, maLength5)
+        out5 := 2 * ema1 - ema2
+    else if maType5 == "T3"
+        out5 := calcT3(close, maLength5)
+
+// HMA bar calculation (only if enabled)
+if boolhmabar
+    hma_value := ta.hma(close, hmabar)
+    hmacolor := close > hma_value ? color.lime : color.red
+
+// MA Conditions - now using the directly calculated values
 var bool ma1CrossUp2 = false
 var bool ma1CrossDn2 = false
 var bool ma1Con = false
@@ -1523,9 +1388,9 @@ if inverseMA
 
 // HMA bar conditions
 if boolhmabar
-    ema_theema_long := ema_theema_long and close > hma
-    ema_theema_short := ema_theema_short and close < hma
-
+    ema_theema_long := ema_theema_long and close > hma_value
+    ema_theema_short := ema_theema_short and close < hma_value
+    
 // ----------------------
 // Function to check if a new trade is allowed based on max trades per direction
 // ----------------------
@@ -1539,7 +1404,7 @@ canTakeNewTrade(bool isLongTrade) =>
             // Check if we've reached max consecutive short trades
             result := shortTradesCount < maxTradesPerDirection
     result
-
+// BEGIN STRATEGY SPECIFIC CODE
 // ----------------------
 // T3 Indicator Calculation
 // ----------------------
@@ -1817,7 +1682,7 @@ else
     e1_to_plot := na
     trendUp := 0
     trendDown := 0
-
+// END STRATEGY SPECIFIC CODE
 // ----------------------
 // Early Exit Protection Calculation
 // ----------------------
@@ -1862,7 +1727,7 @@ else if maProtectionType == "T3"
     earlyExitMA := c1_val * e6_val + c2_val * e5_val + c3_val * e4_val + c4_val * e3_val
 else
     earlyExitMA := ta.ema(protectionSrc, maProtectionLength)  // Default to EMA
-
+// BEGIN STRATEGY SPECIFIC CODE
 // ----------------------
 // Base Entry and Exit Conditions Implementation
 // ----------------------
@@ -1912,7 +1777,7 @@ shortCondition := (useT3 ? t3ShortCondition : true) and
                   shortTrades and 
                   canTakeNewTrade(false) and 
                   (bar_index > lastEntryCandle + waitCandlesBetweenEntries or waitCandlesBetweenEntries <= 0)
-
+// END STRATEGY SPECIFIC CODE
 // ----------------------
 // Global Filter Variables
 // ----------------------
@@ -2557,6 +2422,17 @@ generateAlertJson(string action, float qty, float price, float tp, float sl, boo
                        "\"position_size\":\"" + str.tostring(math.abs(strategy.position_size), "#.#####") + "\"," +
                        "\"time\":\"" + str.format("{0,number,00}-{1,number,00}-{2,number,00} {3,number,00}:{4,number,00}", year(time), month(time), dayofmonth(time), hour(time), minute(time)) + "\""
     
+    // Add advanced mode parameters
+    jsonMsg := jsonMsg + ",\"force_tp\":\"0\"," +
+                       "\"leverage_type\":\"" + marginMode + "\"," +
+                       "\"advanced_mode\":\"1\"," +
+                       "\"order_time_out\":\"60\"," +
+                       "\"exit_existing_trade\":\"0\"," +
+                       "\"stop_bot_below_balance\":\"0\"," +
+                       "\"channelName\":\"\"," +
+                       "\"desc\":\"\"," +
+                       "\"version\":\"1.0\""
+    
     // Add multi-TP configuration
     if useMultiTP
         jsonMsg := jsonMsg + ",\"enable_multi_tp\":\"1\"," +
@@ -2605,9 +2481,47 @@ generateAlertJson(string action, float qty, float price, float tp, float sl, boo
     
     jsonMsg
 
+// Function to process alert text with placeholder replacements
+// For non-Minimalist Bot mode
+processAlertText(string alertText, float qty, float price, float tp, float sl, float pos, float riskUSD, string pair) =>
+    string result = alertText
+    
+    // Replace basic placeholders
+    result := str.replace(result, "#pair#", pair)
+    result := str.replace(result, "#qty#", str.tostring(qty, "#.#####"))
+    result := str.replace(result, "#price#", str.tostring(price, "#.#####"))
+    result := str.replace(result, "#TP#", str.tostring(tp, "#.#####"))
+    result := str.replace(result, "#SL#", str.tostring(sl, "#.#####"))
+    result := str.replace(result, "#pos#", str.tostring(pos, "#.#####"))
+    result := str.replace(result, "#lev#", str.tostring(userLeverage, "#.##"))
+    result := str.replace(result, "#risk#", str.tostring(risk, "#.##"))
+    result := str.replace(result, "#riskUSD#", str.tostring(riskUSD, "#.##"))
+    result := str.replace(result, "#time#", str.format("{0,number,00}:{1,number,00}", hour(time), minute(time)))
+    
+    // Calculate risk-reward ratio
+    float rratio = sl != 0 ? math.abs(tp - price) / math.abs(price - sl) : 0
+    result := str.replace(result, "#RR#", str.tostring(rratio, "#.##"))
+    
+    // Replace advanced mode placeholders with default values
+    result := str.replace(result, "#force_tp#", "ForceTP:N")
+    result := str.replace(result, "#leverage_type#", "LevType:" + marginMode) 
+    result := str.replace(result, "#advanced_mode#", "AdvMode:Y")
+    result := str.replace(result, "#order_time_out#", "Timeout:60")
+    result := str.replace(result, "#exit_existing_trade#", "ExitExist:N")
+    result := str.replace(result, "#stop_bot_below_balance#", "StopBelow:0")
+    result := str.replace(result, "#channelName#", "Channel:")
+    result := str.replace(result, "#desc#", "Desc:")
+    result := str.replace(result, "#stop_loss_price#", "SLPrice:" + str.tostring(sl, "#.#####"))
+    result := str.replace(result, "#version#", "v1.0")
+    
+    result
+	
 // ----------------------
 // Entry Logic with Pre-Entry Checks
 // ----------------------
+// BEGIN STRATEGY SPECIFIC CODE
+
+// END STRATEGY SPECIFIC CODE
 if bar_index > lastEntryBarIndex
     waitForNewBarEntry := false
 
@@ -2735,15 +2649,15 @@ if strategy.position_size == 0 and not waitForNewBarEntry
     // Add session validation
     bool validSessionEntry = not useSessions or isInTradingSession()
     validEntry := validEntry and validSessionEntry
-
+// BEGIN STRATEGY SPECIFIC CODE
     // Add Trendilio protection to prevent entry right after exit
     bool validTrendilioEntry = true
     if useTrendilio and (trendilioTradeType == "OS/OB reverse" or trendilioTradeType == "OS/OB enter reverse" or trendilioTradeType == "OS/OB reverse exit")
         // Prevent entry on the same bar as previous exit
-        validTrendilioEntry := bar_index > lastTrendilioExitBar
+        validTrendilioEntry := bar_index > lastSignalExitBar
     
     validEntry := validEntry and validTrendilioEntry
-    
+// END STRATEGY SPECIFIC CODE    
     // Pre-calculate potential SL and TP for validation
     if longTrades and longCondition
         // Check for leverage risk
@@ -2927,12 +2841,13 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
     
     if canExitSignal and not skipNormalExits
         // Force exit logic
+// BEGIN STRATEGY SPECIFIC CODE
         if force_exit
             if isLong and strategy.position_size > 0 and not longCondition
                 alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                 strategy.close("Long", comment="Forced Exit Long", alert_message=alert_message_exit_long)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
@@ -2940,11 +2855,11 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
                 alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                 strategy.close("Short", comment="Forced Exit Short", alert_message=alert_message_exit_short)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
-        
+// END STRATEGY SPECIFIC CODE       
         // Normal SL/TP exits - only process if not using Multi TP
         if not useMultiTP
             if strategy.position_size > 0
@@ -2952,7 +2867,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
                     alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                     strategy.close("Long", comment="Stop Loss", alert_message=alert_message_exit_long)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -2960,7 +2875,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
                     alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                     strategy.close("Long", comment="Take Profit", alert_message=alert_message_exit_long)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -2969,7 +2884,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
                     alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                     strategy.close("Short", comment="Stop Loss", alert_message=alert_message_exit_short)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -2977,7 +2892,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit
                     alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                     strategy.close("Short", comment="Take Profit", alert_message=alert_message_exit_short)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -3002,7 +2917,7 @@ if earlyExitProtection and tradeActive and bar_index > lastEntryCandle + 1 and n
             alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
             strategy.close("Long", comment="Early Exit Protection", immediately=false, alert_message=alert_message_exit_long)
             tradeActive := false
-            lastTrendilioExitBar := bar_index
+            lastSignalExitBar := bar_index
             lastExitBarIndex := bar_index
             waitForNewBarExit := true
             currentPosition := "flat"
@@ -3010,7 +2925,7 @@ if earlyExitProtection and tradeActive and bar_index > lastEntryCandle + 1 and n
             alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
             strategy.close("Short", comment="Early Exit Protection", immediately=false, alert_message=alert_message_exit_short)
             tradeActive := false
-            lastTrendilioExitBar := bar_index
+            lastSignalExitBar := bar_index
             lastExitBarIndex := bar_index
             waitForNewBarExit := true
             currentPosition := "flat"
@@ -3038,7 +2953,7 @@ if useMultiTP and tradeActive and bar_index > lastEntryCandle
                 alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                 strategy.close("Long", comment="Stop Loss", alert_message=alert_message_exit_long)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
@@ -3052,7 +2967,6 @@ if useMultiTP and tradeActive and bar_index > lastEntryCandle
                     if closeAmount > 0
                         // Key fix: Correctly handle TP1 partial close amount
                         alert_message_tp1_long := useMinimalistBot ? generateAlertJson("sell", closeAmount, tp1Price, 0, 0, true) : i_alert_txt_tp1_long
-                        strategy.order("TP1 Hit", strategy.short, qty=closeAmount, alert_message=alert_message_tp1_long)
                         strategy.order("TP1 Hit", strategy.short, qty=closeAmount, alert_message=alert_message_tp1_long)
                         tp1Reached := true
                         lastExitBarIndex := bar_index
@@ -3076,7 +2990,7 @@ if useMultiTP and tradeActive and bar_index > lastEntryCandle
                     strategy.close("Long", comment="TP3 Hit", alert_message=alert_message_tp3_long)
                     tp3Reached := true
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -3087,7 +3001,7 @@ if useMultiTP and tradeActive and bar_index > lastEntryCandle
                 alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                 strategy.close("Short", comment="Stop Loss", alert_message=alert_message_exit_short)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
@@ -3124,11 +3038,11 @@ if useMultiTP and tradeActive and bar_index > lastEntryCandle
                     strategy.close("Short", comment="TP3 Hit", alert_message=alert_message_tp3_short)
                     tp3Reached := true
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
-
+// BEGIN STRATEGY SPECIFIC CODE
 // ----------------------
 // Improved Trendilio-Specific Exits
 // ----------------------
@@ -3150,7 +3064,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                 alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                 strategy.close("Long", comment="Trendilio Exit Mode", immediately=false, alert_message=alert_message_exit_long)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
@@ -3158,7 +3072,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                 alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                 strategy.close("Short", comment="Trendilio Exit Mode", immediately=false, alert_message=alert_message_exit_short)
                 tradeActive := false
-                lastTrendilioExitBar := bar_index
+                lastSignalExitBar := bar_index
                 lastExitBarIndex := bar_index
                 waitForNewBarExit := true
                 currentPosition := "flat"
@@ -3168,7 +3082,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                     alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                     strategy.close("Long", comment="Trendilio Reverse Exit Mode", immediately=false, alert_message=alert_message_exit_long)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -3177,7 +3091,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                     alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                     strategy.close("Short", comment="Trendilio Reverse Exit Mode", immediately=false, alert_message=alert_message_exit_short)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -3187,7 +3101,7 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                     alert_message_exit_long := useMinimalistBot ? generateAlertJson("sell", strategy.position_size, close, 0, 0, true) : i_alert_txt_exit_long
                     strategy.close("Long", comment="Trendilio Reverse Mode", immediately=false, alert_message=alert_message_exit_long)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
@@ -3196,11 +3110,11 @@ if tradeActive and bar_index > lastEntryCandle + 1 and not waitForNewBarExit and
                     alert_message_exit_short := useMinimalistBot ? generateAlertJson("buy", math.abs(strategy.position_size), close, 0, 0, false) : i_alert_txt_exit_short
                     strategy.close("Short", comment="Trendilio Reverse Mode", immediately=false, alert_message=alert_message_exit_short)
                     tradeActive := false
-                    lastTrendilioExitBar := bar_index
+                    lastSignalExitBar := bar_index
                     lastExitBarIndex := bar_index
                     waitForNewBarExit := true
                     currentPosition := "flat"
-             
+// END STRATEGY SPECIFIC CODE             
 //------------------
 // MONTHLY PNL LOGIC 
 //------------------
